@@ -1,0 +1,6 @@
+{
+  "name": "Aqara Site Manager",
+  "description": "Enterprise SaaS platform for Aqara Studio site management, Builder Lab visual layout design, and centralized cloud operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
