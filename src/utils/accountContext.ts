@@ -3,6 +3,8 @@ import {
   MemberTag,
   Organization,
   OrgMember,
+  Region,
+  RegionCloudGroup,
   Space,
   SpaceRole,
   SpaceShare,
@@ -94,6 +96,42 @@ export function getVisibleSpaces(
   }));
 
   return [...ownedItems, ...shared];
+}
+
+/** 账号注册国家/地区所属云组（决定可创建项目的数据中心范围） */
+export function getRegionCloudGroup(homeRegionId: string, regions: Region[]): RegionCloudGroup {
+  const home = regions.find(r => r.id === homeRegionId);
+  return home?.cloudGroup ?? 'global';
+}
+
+/** 当前账号可创建项目的数据中心 id 列表：cn 账号仅 cn；ru 账号仅 ru；global 账号可选 US/EU/SG/KR */
+export function getEligibleDataCenterRegionIds(homeRegionId: string, regions: Region[]): string[] {
+  const group = getRegionCloudGroup(homeRegionId, regions);
+  if (group === 'cn') return regions.filter(r => r.cloudGroup === 'cn').map(r => r.id);
+  if (group === 'ru') return regions.filter(r => r.cloudGroup === 'ru').map(r => r.id);
+  return regions.filter(r => r.cloudGroup === 'global').map(r => r.id);
+}
+
+/** 解析某项目/Studio 所属的运维区域：优先 space.regionId，回退到 owner 的 homeRegionId，最后兜底 'cn' */
+export function getSpaceRegionId(space: Space, accounts: Account[], users: User[]): string {
+  if (space.regionId) return space.regionId;
+  const ownerAcc = accounts.find(a => a.accountId === space.ownerAccountId);
+  const owner = ownerAcc ? users.find(u => u.id === ownerAcc.userId) : undefined;
+  return owner?.homeRegionId ?? 'cn';
+}
+
+/** 当前账号上下文可访问的运维区域集合 = 可见项目/Studio 分布到的不同区域 id（保持稳定顺序） */
+export function getAccessibleOpsRegionIds(
+  items: VisibleSpaceItem[],
+  accounts: Account[],
+  users: User[],
+): string[] {
+  const seen: string[] = [];
+  for (const item of items) {
+    const rid = getSpaceRegionId(item.space, accounts, users);
+    if (!seen.includes(rid)) seen.push(rid);
+  }
+  return seen;
 }
 
 export function splitPersonalSpaces(items: VisibleSpaceItem[]) {

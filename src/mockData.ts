@@ -351,13 +351,15 @@ export const INITIAL_ORGANIZATIONS = [
   { id: 'enterprise-b', name: '企业B (民生控股)', type: 'enterprise' as const, ownerUserId: 'user-jun', createdAt: '2024-11-08 10:12:30', description: '民生控股，总部办公与全国零售门店智能运维。' }
 ];
 
-// Studio Cloud 全球区域节点 — 不同国家/地区连接到不同的 Studio 云
+// Studio Cloud 全球区域节点 — 6 个数据中心
+// cloudGroup: global = US/EU/SG/KR 账号互通；cn / ru 为主权隔离区，账号与项目数据不可跨组
 export const REGIONS = [
-  { id: 'cn', name: '中国大陆', flag: '🇨🇳', cloudEndpoint: 'cn-hangzhou.studio.aqara.com', latency: '32ms' },
-  { id: 'us', name: '美国 (US West)', flag: '🇺🇸', cloudEndpoint: 'us-west.studio.aqara.com', latency: '186ms' },
-  { id: 'eu', name: '欧洲 (Frankfurt)', flag: '🇪🇺', cloudEndpoint: 'eu-central.studio.aqara.com', latency: '224ms' },
-  { id: 'sg', name: '新加坡 (SEA)', flag: '🇸🇬', cloudEndpoint: 'ap-southeast.studio.aqara.com', latency: '78ms' },
-  { id: 'kr', name: '韩国 (Seoul)', flag: '🇰🇷', cloudEndpoint: 'kr.studio.aqara.com', latency: '61ms' },
+  { id: 'cn', name: '中国大陆', flag: '🇨🇳', cloudEndpoint: 'cn-hangzhou.studio.aqara.com', latency: '32ms', cloudGroup: 'cn' as const, isSovereign: true },
+  { id: 'us', name: '美国 (US West)', flag: '🇺🇸', cloudEndpoint: 'us-west.studio.aqara.com', latency: '186ms', cloudGroup: 'global' as const },
+  { id: 'eu', name: '欧洲 (Frankfurt)', flag: '🇪🇺', cloudEndpoint: 'eu-central.studio.aqara.com', latency: '224ms', cloudGroup: 'global' as const },
+  { id: 'ru', name: '俄罗斯', flag: '🇷🇺', cloudEndpoint: 'ru-central.studio.aqara.com', latency: '145ms', cloudGroup: 'ru' as const, isSovereign: true },
+  { id: 'sg', name: '新加坡 (SEA)', flag: '🇸🇬', cloudEndpoint: 'ap-southeast.studio.aqara.com', latency: '78ms', cloudGroup: 'global' as const },
+  { id: 'kr', name: '韩国 (Seoul)', flag: '🇰🇷', cloudEndpoint: 'kr.studio.aqara.com', latency: '61ms', cloudGroup: 'global' as const },
 ];
 
 // 设计平台 (Aqara Builder) 中已完成的方案 / 已购买插件 — 可应用到 Site Manager Space
@@ -368,6 +370,7 @@ export const DESIGN_PLATFORM_PLANS = [
   { id: 'dp-4', title: '零售门店客流大屏插件', updatedAt: '2026-06-20 14:08:33', status: 'Plugin', devices: 6, area: '—', kind: 'plugin' as const },
   { id: 'dp-5', title: '智慧办公会议室方案', updatedAt: '2026-06-18 10:55:47', status: 'In Design', devices: 21, area: '96 m²', kind: 'plan' as const },
   { id: 'dp-6', title: '能耗监测分析插件', updatedAt: '2026-06-12 08:30:19', status: 'Plugin', devices: 4, area: '—', kind: 'plugin' as const },
+  { id: 'dp-7', title: '多店客流热力图', updatedAt: '2026-06-10 11:22:00', status: 'Plugin', devices: 5, area: '—', kind: 'plugin' as const, fromMarketplace: true, marketplacePublisher: 'Retail Labs' },
 ];
 
 export const INITIAL_ORG_DEPARTMENTS = [
@@ -385,11 +388,11 @@ export const INITIAL_ORG_DEPARTMENTS = [
 ];
 
 export const DEMO_USERS = [
-  { id: 'user-jun', email: 'liangjunucd@gmail.com', displayName: 'Jun (userA)' },
-  { id: 'user-sysadmin', email: 'system-admin@aqara.com', displayName: 'System Admin (userB)' },
-  { id: 'user-installer', email: 'remote.eng@aqara.com', displayName: 'Installer (userC)' },
-  { id: 'user-yanbin', email: 'yanbin@example.com', displayName: '焱彬' },
-  { id: 'user-staff', email: 'staff.a@xingyuehotel.com', displayName: 'Hotel Staff (userD)' },
+  { id: 'user-jun', email: 'liangjunucd@gmail.com', displayName: 'Jun (userA)', homeRegionId: 'cn' },
+  { id: 'user-sysadmin', email: 'system-admin@aqara.com', displayName: 'System Admin (userB)', homeRegionId: 'us' },
+  { id: 'user-installer', email: 'remote.eng@aqara.com', displayName: 'Installer (userC)', homeRegionId: 'sg' },
+  { id: 'user-yanbin', email: 'yanbin@example.com', displayName: '焱彬', homeRegionId: 'cn' },
+  { id: 'user-staff', email: 'staff.a@xingyuehotel.com', displayName: 'Hotel Staff (userD)', homeRegionId: 'eu' },
 ];
 
 export const INITIAL_ACCOUNTS = [
@@ -418,11 +421,11 @@ export const INITIAL_SPACES = [
   { id: 'yanbin-home', name: '焱彬的家', ownerAccountId: personalAccountId('user-yanbin'), storageOrgId: null, spaceType: 'personal_space' as const, description: '焱彬的个人私有空间', createdAt: '2026-02-20', storageQuotaGb: 5 },
   { id: 'installer-home', name: 'Installer 的家', ownerAccountId: personalAccountId('user-installer'), storageOrgId: null, spaceType: 'personal_space' as const, description: 'Installer 个人私有空间', createdAt: '2026-01-05', storageQuotaGb: 5 },
 
-  { id: 'tech-park', name: '崇文大楼 (Chongwen Building)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '企业A商用场地，科创研发大楼物联运维', createdAt: '2025-11-20', storageQuotaGb: 50 },
-  { id: 'xingyue-hotel', name: '星悦酒店项目 (Xingyue Hotel)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '高奢酒店全客房物联控制及核心机房运维', createdAt: '2026-02-01', storageQuotaGb: 50 },
+  { id: 'tech-park', name: '崇文大楼 (Chongwen Building)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '企业A商用场地，科创研发大楼物联运维', createdAt: '2025-11-20', storageQuotaGb: 50, regionId: 'cn' },
+  { id: 'xingyue-hotel', name: '星悦酒店项目 (Xingyue Hotel)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '高奢酒店全客房物联控制及核心机房运维（美西数据中心）', createdAt: '2026-02-01', storageQuotaGb: 50, regionId: 'us' },
 
-  { id: 'minsheng-hq', name: '民生总部大楼 (Minsheng HQ)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '民生总部核心大楼全方位监控', createdAt: '2025-05-12', storageQuotaGb: 50 },
-  { id: 'retail-stores', name: '联营智慧门店 (Smart Stores)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '全国主力联营零售店客流统计与大屏展示', createdAt: '2026-04-18', storageQuotaGb: 50 },
+  { id: 'minsheng-hq', name: '民生总部大楼 (Minsheng HQ)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '民生总部核心大楼全方位监控', createdAt: '2025-05-12', storageQuotaGb: 50, regionId: 'cn' },
+  { id: 'retail-stores', name: '联营智慧门店 (Smart Stores)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '全国主力联营零售店客流统计与大屏展示（东南亚节点）', createdAt: '2026-04-18', storageQuotaGb: 50, regionId: 'sg' },
 ];
 
 /** 项目方案库 — 设计平台导入后可分发到多台 Studio */
@@ -460,22 +463,42 @@ export const INITIAL_PROJECT_PLANS: ProjectPlan[] = [
     appliedSiteIds: ['operations-hub'],
     associatedAt: '2026-04-02',
   },
+  {
+    id: 'pp-retail-traffic',
+    spaceId: 'retail-stores',
+    planId: 'dp-7',
+    title: '多店客流热力图',
+    kind: 'plugin',
+    devices: 5,
+    sizeMb: estimateDesignSizeMb(5),
+    appliedSiteIds: [],
+    associatedAt: '2026-06-11',
+    fromMarketplace: true,
+    marketplacePublisher: 'Retail Labs',
+  },
 ];
 
-/** 项目云存储资源（方案设计 + 日志备份等） */
+/** 项目资源库资源（方案设计 + 数据备份 + 界面配置等） */
 export const INITIAL_PROJECT_ASSETS: ProjectAsset[] = [
   { id: 'asset-hotel-std', spaceId: 'xingyue-hotel', name: '星悦酒店标准客房模板', kind: 'design', sizeMb: estimateDesignSizeMb(12), source: 'builder', projectPlanId: 'pp-hotel-std', createdAt: '2026-03-10' },
   { id: 'asset-hotel-suite', spaceId: 'xingyue-hotel', name: '行政套房全屋智控', kind: 'design', sizeMb: estimateDesignSizeMb(32), source: 'builder', projectPlanId: 'pp-hotel-suite', createdAt: '2026-03-18' },
-  { id: 'asset-hotel-log-1', spaceId: 'xingyue-hotel', name: 'Studio 运行日志 · 2026-06', kind: 'log-backup', sizeMb: 128, source: 'studio-cloud', createdAt: '2026-07-01' },
-  { id: 'asset-hotel-log-2', spaceId: 'xingyue-hotel', name: '自动化事件快照 · Week 26', kind: 'log-backup', sizeMb: 64, source: 'studio-cloud', createdAt: '2026-06-28' },
-  { id: 'asset-hotel-snap', spaceId: 'xingyue-hotel', name: '机房 Studio 配置快照', kind: 'snapshot', sizeMb: 22, source: 'system', createdAt: '2026-06-15' },
+  // 数据备份：Site Manager 在 Studio Cloud 侧对项目下多台 Studio(本地主机) 的数据进行云端备份
+  { id: 'asset-hotel-data-1', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2c.zip', kind: 'data-backup', sizeMb: 128, source: 'studio-cloud', backupType: 'auto', createdAt: '2026-07-01 00:00' },
+  { id: 'asset-hotel-data-2', spaceId: 'xingyue-hotel', name: 'Backup-2b91e7.zip', kind: 'data-backup', sizeMb: 42, source: 'studio-cloud', backupType: 'manual', studioId: 'warehouse', createdAt: '2026-06-28 14:32' },
+  { id: 'asset-hotel-data-3', spaceId: 'xingyue-hotel', name: 'Backup-5d0c14.zip', kind: 'data-backup', sizeMb: 38, source: 'studio-cloud', backupType: 'manual', studioId: 'global-hq', createdAt: '2026-06-27 09:20' },
+  { id: 'asset-hotel-ui', spaceId: 'xingyue-hotel', name: '客房控制面板 · 深色主题', kind: 'ui-config', sizeMb: 8.5, source: 'builder', assignedMemberAccountIds: [orgAccountId('user-sysadmin', 'enterprise-a'), orgAccountId('user-staff', 'enterprise-a')], createdAt: '2026-05-20' },
   { id: 'asset-tech-design', spaceId: 'tech-park', name: '智慧办公会议室方案', kind: 'design', sizeMb: estimateDesignSizeMb(21), source: 'builder', projectPlanId: 'pp-tech-office', createdAt: '2026-04-02' },
-  { id: 'asset-tech-log', spaceId: 'tech-park', name: 'Studio Cloud 审计日志 · Q2', kind: 'log-backup', sizeMb: 96, source: 'studio-cloud', createdAt: '2026-06-30' },
+  { id: 'asset-tech-data', spaceId: 'tech-park', name: 'Backup-a17f9b.zip', kind: 'data-backup', sizeMb: 96, source: 'studio-cloud', backupType: 'auto', createdAt: '2026-06-30 00:00' },
+  { id: 'asset-tech-data-2', spaceId: 'tech-park', name: 'Backup-c3e820.zip', kind: 'data-backup', sizeMb: 34, source: 'studio-cloud', backupType: 'manual', studioId: 'operations-hub', createdAt: '2026-06-21 09:15' },
+  { id: 'asset-tech-ui', spaceId: 'tech-park', name: '会议室场景 App 界面包', kind: 'ui-config', sizeMb: 12, source: 'builder', assignedMemberAccountIds: [], createdAt: '2026-06-10' },
+  { id: 'asset-retail-plugin', spaceId: 'retail-stores', name: '多店客流热力图', kind: 'design', sizeMb: estimateDesignSizeMb(5), source: 'builder', projectPlanId: 'pp-retail-traffic', createdAt: '2026-06-11' },
 ];
 
 export const INITIAL_SPACE_SHARES = [
-  // personal_space 共享：焱彬的家 → Jun Admin
+  // personal_space 共享：焱彬的家 → Jun Admin（已接受 = Added）
   { id: 'ps-1', spaceId: 'yanbin-home', targetAccountId: personalAccountId('user-jun'), role: 'Admin' as const, shareType: 'personal_space' as const, status: 'Active' as const, invitedAt: '2026-03-01' },
+  // personal_space 待接受邀请：Jun 邀请 焱彬 加入「Jun的家」，等待对方接受（Pending）
+  { id: 'ps-pending-1', spaceId: 'my-home', targetAccountId: personalAccountId('user-yanbin'), role: 'Operator' as const, shareType: 'personal_space' as const, status: 'Pending' as const, invitedAt: '2026-07-05' },
   // org_space 内部共享
   { id: 'os-1', spaceId: 'tech-park', targetAccountId: orgAccountId('user-sysadmin', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-01-20' },
   { id: 'os-2', spaceId: 'xingyue-hotel', targetAccountId: orgAccountId('user-sysadmin', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-01-20' },

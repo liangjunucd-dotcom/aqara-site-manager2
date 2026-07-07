@@ -40,6 +40,8 @@ export interface User {
   id: string;
   email: string;
   displayName: string;
+  /** 注册 Aqara Builder 账号时选择的国家/地区，属于账号基本信息（与 Studio Cloud 运维节点无关） */
+  homeRegionId: string;
 }
 
 export interface Organization {
@@ -55,12 +57,18 @@ export interface Organization {
 export type OrgRole = 'owner' | 'admin' | 'member' | 'external';
 
 /** Studio Cloud 区域节点：不同国家/地区连接到不同的 Studio 云 */
+export type RegionCloudGroup = 'global' | 'cn' | 'ru';
+
 export interface Region {
   id: string;
   name: string;
   flag: string;
   cloudEndpoint: string;
   latency?: string;
+  /** 云组：global = US/EU/SG/KR 账号互通；cn / ru 为主权隔离区，账号不可跨组 */
+  cloudGroup?: RegionCloudGroup;
+  /** 主权隔离区标记（cn、ru） */
+  isSovereign?: boolean;
 }
 
 export type AccountType = 'personal' | 'org_member';
@@ -86,12 +94,14 @@ export interface Space {
   spaceType: SpaceType;
   description?: string;
   createdAt: string;
-  /** 项目云存储配额（GB），个人默认 5，组织默认 50 */
+  /** 项目资源配额（GB），个人默认 5，组织默认 50 */
   storageQuotaGb?: number;
+  /** 该项目/Studio 所连接的 Studio Cloud 运维区域（REGIONS 的 id）；留空则回退到 owner 的 homeRegionId */
+  regionId?: string;
 }
 
-/** 项目云存储中的资源条目 */
-export type ProjectAssetKind = 'design' | 'log-backup' | 'snapshot';
+/** 项目资源库中的条目 */
+export type ProjectAssetKind = 'design' | 'data-backup' | 'ui-config';
 
 export interface ProjectAsset {
   id: string;
@@ -102,6 +112,12 @@ export interface ProjectAsset {
   source: 'builder' | 'studio-cloud' | 'system';
   /** 若为设计文件，关联到项目方案 id */
   projectPlanId?: string;
+  /** 若为界面配置(ui-config)，分配给的项目成员 accountId 列表 */
+  assignedMemberAccountIds?: string[];
+  /** 若为数据备份(data-backup)，标记为自动计划备份或手动触发备份 */
+  backupType?: 'auto' | 'manual';
+  /** 若为数据备份(data-backup)，来源 Studio(站点) id；留空表示覆盖项目下全部 Studio 的聚合备份 */
+  studioId?: string;
   createdAt: string;
 }
 
@@ -138,6 +154,9 @@ export interface ProjectPlan {
   /** 已应用该方案的 Studio(站点) id 列表 */
   appliedSiteIds: string[];
   associatedAt: string;
+  /** 来自插件市场（经 Lab AI 购买后应用到项目） */
+  fromMarketplace?: boolean;
+  marketplacePublisher?: string;
 }
 
 /** 估算方案设计文件占用（MB） */

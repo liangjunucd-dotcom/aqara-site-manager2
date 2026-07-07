@@ -6,7 +6,9 @@
 |------|----------|--------|----------|------|
 | v0.6 | 初稿：背景、定位、原则、4.1 | Jun | 2026.07.03 | — |
 | v0.7 | 融入 Aqara 全链路架构，优化背景/定位/功能章节 | Jun | 2026.07.06 | 对齐 Builder → Cloud → Studio → 用户 闭环 |
-| **v1.3** | **账号-空间-权限-成员体系；产品切换；项目云存储；组织管理后台；B 端多 Studio 方案分发** | Jun | 2026.07.08 | Mock 原型已部署 Vercel + GitHub Pages |
+| **v1.3** | **账号-空间-权限-成员体系；产品切换；项目资源库；组织管理后台；B 端多 Studio 方案分发** | Jun | 2026.07.08 | Mock 原型已部署 Vercel + GitHub Pages |
+| **v1.3.1** | **产品切换改为 Site Manager / Lab AI；云存储更名为项目资源；新增界面配置；数据备份** | Jun | 2026.07.08 | — |
+| **v1.4** | **Lab AI 未来方向：插件市场、开发者中心；统一交付管线（Lab AI → 项目资源 → Studio）** | Jun | 2026.07.08 | Mock 占位，非真实商城实现 |
 
 ### 在线原型
 
@@ -269,50 +271,54 @@ aqarastudio-xxxx
 
 **命名：** 统一「xxx 主机」格式。
 
-**空状态：** 极简引导 +「添加站点」，无营销元素。
+**空状态：** 说明 Studio 须在现场本地绑定（Aqara Studio 登录并选择本项目）；不提供云端「添加站点」入口。一行未来提示：Provisioning Code 远程绑定（规划中）。
 
 ---
 
-### 4.5 方案设计与项目云存储（V1.3 重构）
+### 4.5 方案设计与项目资源库（V1.3 重构）
 
-**功能概述：** 方案设计文件不再以顶栏面板展示，而是纳入 **项目级云存储**，与日志备份、配置快照共享配额。
+**功能概述：** 方案设计、界面配置与数据备份纳入 **项目级资源库**，共享存储配额（非顶栏面板、非项目设置子页）。
 
-**链路位置：** 设计（Aqara Builder 导入）→ 运维（云存储纳管）→ 实施（按 Studio 分发）
+**链路位置：** 创作（Lab AI 导入）→ 运维（项目资源纳管）→ 实施（按 Studio 分发）
 
 **信息架构：**
 
 ```
 项目内左侧菜单
 ├── Studios Hub        — 站点运维（卡片展示「运行方案」）
-├── 云存储              — 项目共享存储（方案 / 日志 / 快照）
+├── 项目资源            — 方案设计 / 界面配置 / 数据备份
 ├── Topology Design
 ├── Studio Cloud Logs
 └── Project Settings   — 基本信息 + 项目成员
 ```
 
-**云存储能力：**
+**项目资源能力：**
 
 | 资源类型 | 来源 | 说明 |
 |----------|------|------|
-| 方案设计 | Aqara Builder 导入 | 存入项目后，可分发到多台 Studio |
-| 日志备份 | Studio Cloud 自动上传 | 运行日志、事件快照归档 |
-| 配置快照 | 系统 / Studio | 控制器配置备份 |
+| 方案设计 | Lab AI · Space Plan / 插件市场 | 空间方案或 Studio 插件（`ProjectPlan.kind`: `plan` \| `plugin`），可分发到多台 Studio |
+| 界面配置 | Lab AI · App UI & Theme | App 界面与主题，关联到项目成员后于 App 端生效 |
+| 数据备份 | Studio Cloud 自动上传 | 运行数据、事件归档 |
+
+**插件模型（复用方案设计槽位）：** 市场购买的插件写入项目资源时 `ProjectAsset.kind = design`，通过关联的 `ProjectPlan.kind = plugin` 区分；分发路径与 Space Plan 相同（项目资源 → Studio 分发 → Studio 运行时加载）。
 
 **配额：** 个人项目默认 5 GB；组织项目默认 50 GB（可扩展）。
 
-**B 端多 Studio 差异化：** 同一项目可关联多个方案；每台 Studio 绑定不同方案（如酒店标准客房 vs 行政套房）。云存储页展示「已绑定 N 台 Studio」并支持分发；Studio 卡片右上角显示当前运行方案名。
+**B 端多 Studio 差异化：** 同一项目可关联多个方案；每台 Studio 绑定不同方案。项目资源页展示「已绑定 N 台 Studio」并支持分发；Studio 卡片右上角显示当前运行方案名。
 
 **与旧版 Blueprint 标签关系：** 若 Studio 已绑定项目方案，优先展示方案名；否则回退至 legacy Blueprint 标签；均未绑定显示「未绑定方案」。
 
-**数据流：**
+**统一交付管线：**
 
 ```
-Aqara Builder 发布方案
-    → 应用到 Site Manager 项目（写入云存储）
-        → 运维人员在云存储中「分发到 Studio」
-            → Studio 卡片展示运行方案
-                → Aqara Studio 本地运行实例
+Lab AI 创作物（Space Plan / App UI & Theme / 插件）
+    → 「应用到 Site Manager」写入项目资源库
+        ├─ design（plan 或 plugin）→ 分发到 Studio → Studio 运行时
+        ├─ ui-config → 分配给项目成员 → App 端展示
+        └─ data-backup → Studio Cloud 归档（反向上行）
 ```
+
+与 **4.16 Lab AI** 中插件市场、开发者中心共用同一路径；市场购买或自研发布均先进入 Lab AI 资产库，再「应用到 Site Manager」。
 
 ---
 
@@ -335,9 +341,10 @@ Aqara Builder 发布方案
 
 **云端侧（Site Manager）：**
 
-- 空壳 Space 等待绑定
-- 支持 Provision Studio 预注册（名称、型号、ISP、时区）
-- 预注册 Studio 以「待激活」展示
+- 展示已绑定 Studio 卡片与运维信息；**不提供**云端预注册 / 添加站点
+- 当前模型：**本地 Studio 主动绑定到云端项目**（非云端下发站点）
+
+**规划（后续）：** 云端为项目生成 Provisioning Code，现场 Studio 输入该码完成远程绑定。
 
 **本地侧（Aqara Studio，Installer）：**
 
@@ -446,26 +453,55 @@ Aqara Builder 发布方案
 | 组织工作区 | 用户加入企业后的工作上下文 |
 | 工作区切换 | 头像下拉仅展示当前工作区 + 「切换」展开列表 |
 
-**顶栏品牌：** 固定 **Aqara Builder** 品牌；右侧产品切换器为「当前产品名 + ▼」（Site Manager / Space Plan），参考阿里云效。
+**顶栏品牌：** 固定 **Aqara Builder** 品牌；右侧产品切换器为「当前产品名 + ▼」（**Site Manager** / **Lab AI**），参考阿里云效。
 
-**默认登录：** 进入 Site Manager 控制台（非设计平台）。
+**默认登录：** 进入 Site Manager 控制台。
 
 ---
 
-### 4.16 Aqara Builder 产品切换（V1.3 新增）
+### 4.16 Aqara Builder 产品切换与 Lab AI（V1.3 新增，V1.4 扩展）
 
 | 产品 | 说明 |
 |------|------|
-| Site Manager | Studio Cloud 运维控制台 |
-| Space Plan | Aqara Builder 设计平台（方案库、插件） |
+| Site Manager | Studio Cloud 运维控制台：项目资源纳管、Studio 分发、成员与权限 |
+| Lab AI | 创作与扩展平台；创作物经「应用到 Site Manager」进入项目资源库 |
 
-设计平台方案可「应用到 Site Manager」：选择工作区 + 目标项目（或新建）→ 写入项目云存储。
+**Lab AI 产品面（当前 + 规划）：**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| Space Plan | 已 Mock | 空间方案设计与模板 |
+| App UI & Theme | 已 Mock | App 页面与主题配置 |
+| 插件市场 Plugin Marketplace | **规划中** | 第三方发布插件；用户浏览、购买/安装；安装后出现在 Lab AI 资产库，再「应用到 Site Manager」 |
+| 开发者中心 Developer Hub | **规划中** | 插件开发与 App 页面开发工具；发布至市场或直接应用到指定项目 |
+
+**统一交付路径（所有 Lab AI 产物）：**
+
+```
+Lab AI 资产（自研 / 购买 / 导入）
+  → 应用到 Site Manager · 项目资源（design / ui-config）
+    → design：分发到 Studio(s) → Studio 运行时加载（plan 与 plugin 同路径）
+    → ui-config：分配给项目成员 → 终端 App 展示
+```
+
+**插件市场（未来，Mock 占位）：**
+
+- 浏览分类、查看插件详情与版本
+- 购买/授权后写入用户 Lab AI 库（同 Space Plan 卡片形态，`kind: plugin`）
+- 不支持真实支付与后端 catalog；原型仅展示导航与说明
+
+**开发者中心（未来，Mock 占位）：**
+
+- 插件 SDK / 打包与发布流程
+- App Page 可视化编辑与主题导出
+- 发布目标：插件市场 **或** 直接「应用到 Site Manager 项目」
+- 不提供完整 IDE；原型为占位说明页
 
 ---
 
 ### 4.17 Studio Cloud 区域切换（V1.3 新增）
 
-顶栏常驻 **Studio Cloud 区域**切换器（仅 Site Manager 站点运维场景显示，设计平台不显示）。
+顶栏常驻 **Studio Cloud 区域**切换器（仅 Site Manager 站点运维场景显示，Lab AI 不显示）。
 
 不同国家/地区连接不同 Studio 云节点，影响可见项目数据来源。
 
@@ -552,8 +588,8 @@ Space (personal_space | org_space)
   ├── SpaceStructureNode (树形分区)
   ├── SpaceShare (项目成员 + 角色)
   ├── SpaceCustomRole (自定义角色名 → Admin/Operator)
-  ├── ProjectStorage (云存储配额)
-  │     ├── ProjectAsset (design | log-backup | snapshot)
+  ├── ProjectResources (项目资源配额)
+  │     ├── ProjectAsset (design | data-backup | ui-config)
   │     └── ProjectPlan (方案库，可分发)
   └── Studio (Site)
         ├── appliedProjectPlanId (via ProjectPlan.appliedSiteIds)
@@ -640,12 +676,12 @@ Space (personal_space | org_space)
 |----------|:----:|:----:|:----:|:----:|:----:|
 | 4.1 创建 Space | | ● | | | |
 | 4.4 Studio 卡片 | | ● | ○ | | ○ |
-| 4.5 方案/云存储 | ● | ● | ○ | | |
+| 4.5 方案/项目资源 | ● | ● | ○ | | |
 | 4.6 设备绑定 | | ○ | ● | | |
 | 4.8 Studio 详情 | | ● | ○ | ○ | |
 | 4.9 权限 | | ● | | ● | |
 | 4.15 账号工作区 | | ● | | ● | |
-| 4.16 Builder 切换 | ● | ● | | | |
+| 4.16 Builder / Lab AI | ● | ● | ○ | ○ | |
 | 4.17 区域切换 | | ● | ○ | | ○ |
 | 4.18 个人设置 | | ● | | ● | |
 | 4.10 交付 | | ● | ○ | ● | |

@@ -288,12 +288,6 @@ export default function SpaceHubView({
   const [runningDiagnosticId, setRunningDiagnosticId] = useState<string | null>(null);
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
   
-  // Provision / Add new Studio state
-  const [isAddStudioOpen, setIsAddStudioOpen] = useState(false);
-  const [newStudioName, setNewStudioName] = useState('');
-  const [newStudioModel, setNewStudioModel] = useState('Aqara Hub M3');
-  const [newStudioIsp, setNewStudioIsp] = useState('AT&T Business');
-  const [newStudioTZ, setNewStudioTZ] = useState('PST (UTC-8)');
   const [activeMenuNodeId, setActiveMenuNodeId] = useState<string | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(true);
@@ -559,35 +553,6 @@ export default function SpaceHubView({
       return site;
     }));
     setIsAssignNodeOpen(null);
-  };
-
-  // Provision / Add new Studio
-  const handleAddStudioSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStudioName.trim()) return;
-    const newId = `studio-${Date.now()}`;
-    const newSiteObj: Site = {
-      id: newId,
-      name: newStudioName,
-      status: 'up-to-date',
-      location: 'Custom Lab',
-      timeZone: newStudioTZ,
-      modelType: newStudioModel,
-      isp: newStudioIsp,
-      spaceId: activeSpaceId,
-      structureNodeId: selectedNodeId === 'all' ? null : selectedNodeId,
-      blueprint: 'blueprint v1.0',
-      timeline: [
-        { time: '05:00', status: 'online', length: 100 }
-      ],
-      devices: [
-        { id: `dev-${Date.now()}-1`, name: 'Primary Controller Hub', type: 'hub', model: 'Aqara Hub M3', status: 'online', room: 'Suite A' },
-        { id: `dev-${Date.now()}-2`, name: 'Dome Security Camera', type: 'camera', model: 'Camera Hub G3', status: 'online', room: 'Suite A' }
-      ]
-    };
-    onUpdateSites([...sites, newSiteObj]);
-    setNewStudioName('');
-    setIsAddStudioOpen(false);
   };
 
   // Render device icon inside Studio card
@@ -987,7 +952,7 @@ export default function SpaceHubView({
           {/* ==================== RIGHT STUDIOS LIST ==================== */}
           <div className={`${isSidebarPinned ? 'xl:col-span-4' : 'w-full'} space-y-4`}>
           
-          {/* Toolbar row (Search & Switcher View & Add Studio Button) */}
+          {/* Toolbar row (Search & View Switcher) */}
           <div className="bg-white border border-slate-200 px-4 py-2.5 rounded-xl flex flex-col sm:flex-row items-center justify-end gap-3 shadow-xs select-none">
             
             {/* Actions & Filters */}
@@ -1023,15 +988,6 @@ export default function SpaceHubView({
                 </button>
               </div>
 
-              {/* Provision Studio Button (Unifi Green style) */}
-              <button
-                onClick={() => setIsAddStudioOpen(true)}
-                className="px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] text-white font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
-              >
-                <Plus size={13} />
-                <span>添加站点</span>
-              </button>
-
             </div>
 
           </div>
@@ -1039,15 +995,21 @@ export default function SpaceHubView({
           {/* Studios Cards / List View Stage */}
           {filteredStudios.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-xl py-16 px-6 flex flex-col items-center justify-center min-h-[320px] text-center select-none">
-              <p className="text-slate-500 text-sm mb-6">
-                {spaceStudios.length === 0 ? '暂无站点' : '未找到匹配的站点'}
-              </p>
-              <button
-                onClick={() => setIsAddStudioOpen(true)}
-                className="px-5 py-2.5 bg-[#10b981] hover:bg-[#059669] text-white font-bold text-sm rounded-lg transition-colors cursor-pointer"
-              >
-                添加站点
-              </button>
+              {spaceStudios.length === 0 ? (
+                <>
+                  <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center mb-4">
+                    <Server size={22} className="text-slate-400" />
+                  </div>
+                  <p className="text-slate-600 text-sm max-w-md leading-relaxed">
+                    Studio 需在现场本地完成绑定。在 Aqara Studio 客户端登录并选择本项目后，将自动出现在此处。
+                  </p>
+                  <p className="text-slate-400 text-xs mt-4 max-w-md">
+                    未来将支持通过 Provisioning Code 远程绑定 Studio。
+                  </p>
+                </>
+              ) : (
+                <p className="text-slate-500 text-sm">未找到匹配的站点</p>
+              )}
             </div>
 
           ) : viewMode === 'grid' ? (
@@ -1303,115 +1265,6 @@ export default function SpaceHubView({
 
       </div>
     </div>
-
-      {/* ==================== MODAL: ADD STUDIO TO SPACE ==================== */}
-      {isAddStudioOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
-            <div className="bg-[#2b3542] p-4 text-white flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-sm">新增 Studio 节点 (Provision Studio)</h3>
-                <p className="text-[10px] text-slate-300 mt-0.5">Register a hardware controller on Aqara Studio cloud</p>
-              </div>
-              <button
-                onClick={() => setIsAddStudioOpen(false)}
-                className="text-slate-400 hover:text-white text-xs font-semibold cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-            
-            <form onSubmit={handleAddStudioSubmit} className="p-4 space-y-3.5 text-xs text-slate-600">
-              <div>
-                <label htmlFor="modal-studio-name" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Studio Node Name *
-                </label>
-                <input
-                  type="text"
-                  id="modal-studio-name"
-                  required
-                  placeholder="e.g. Office Core Controller, Reception Gateway"
-                  className="w-full px-3 py-2 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold text-slate-800"
-                  value={newStudioName}
-                  onChange={(e) => setNewStudioName(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="modal-studio-model" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Hub Controller Model
-                  </label>
-                  <select
-                    id="modal-studio-model"
-                    className="w-full px-2.5 py-2 border border-slate-200 bg-white rounded focus:outline-none focus:border-slate-400"
-                    value={newStudioModel}
-                    onChange={(e) => setNewStudioModel(e.target.value)}
-                  >
-                    <option value="Aqara Hub M3">Aqara Hub M3</option>
-                    <option value="Aqara Hub E1">Aqara Hub E1</option>
-                    <option value="Camera Hub G3">Camera Hub G3</option>
-                    <option value="Network Server">Network Server</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="modal-studio-isp" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Provider Gateway ISP
-                  </label>
-                  <select
-                    id="modal-studio-isp"
-                    className="w-full px-2.5 py-2 border border-slate-200 bg-white rounded focus:outline-none focus:border-slate-400"
-                    value={newStudioIsp}
-                    onChange={(e) => setNewStudioIsp(e.target.value)}
-                  >
-                    <option value="AT&T Business">AT&T Business</option>
-                    <option value="Comcast Business">Comcast Business</option>
-                    <option value="Verizon Fios Business">Verizon Fios</option>
-                    <option value="Vodafone">Vodafone</option>
-                    <option value="TET">TET</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="modal-studio-tz" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Timezone Zone
-                </label>
-                <select
-                  id="modal-studio-tz"
-                  className="w-full px-2.5 py-2 border border-slate-200 bg-white rounded focus:outline-none focus:border-slate-400"
-                  value={newStudioTZ}
-                  onChange={(e) => setNewStudioTZ(e.target.value)}
-                >
-                  <option value="PST (UTC-8)">PST (UTC-8) - Pacific Standard Time</option>
-                  <option value="EST (UTC-5)">EST (UTC-5) - Eastern Standard Time</option>
-                  <option value="GMT (UTC+0)">GMT (UTC+0) - Greenwich Mean Time</option>
-                  <option value="CET (UTC+1)">CET (UTC+1) - Central European Time</option>
-                </select>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button
-                  type="button"
-                  id="cancel-studio-create"
-                  onClick={() => setIsAddStudioOpen(false)}
-                  className="px-3.5 py-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50 font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  id="submit-studio-create"
-                  className="px-4 py-1.5 bg-[#10b981] hover:bg-[#059669] text-white rounded font-bold cursor-pointer"
-                >
-                  Provision Studio
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ==================== BACKUP SETTINGS DIALOG ==================== */}
       {activeDialog === 'backup' && (

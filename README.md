@@ -1,6 +1,6 @@
 # Aqara Site Manager (Studio Cloud)
 
-Studio Cloud / Site Manager 交互原型，覆盖账号-空间-权限-成员管理、Studio 运维、项目云存储与 Aqara Builder 设计平台联动。
+Studio Cloud / Site Manager 交互原型，覆盖账号-空间-权限-成员管理、Studio 运维、项目资源与 Lab AI 创作联动。
 
 ## 在线演示
 

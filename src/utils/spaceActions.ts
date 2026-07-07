@@ -30,7 +30,7 @@ export function inviteOrgSpaceExternal(params: {
 
   let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
-    user = { id: `user-${Date.now()}`, email, displayName: name || email.split('@')[0] };
+    user = { id: `user-${Date.now()}`, email, displayName: name || email.split('@')[0], homeRegionId: 'cn' };
     users = [...users, user];
   }
 
@@ -102,7 +102,7 @@ export function invitePersonalSpace(params: {
 
   let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
-    user = { id: `user-${Date.now()}`, email, displayName: name || email.split('@')[0] };
+    user = { id: `user-${Date.now()}`, email, displayName: name || email.split('@')[0], homeRegionId: 'cn' };
     users = [...users, user];
   }
 
@@ -120,13 +120,49 @@ export function invitePersonalSpace(params: {
         role,
         roleLabel,
         shareType: 'personal_space',
-        status: 'Active',
+        // 个人工作区邀请需对方接受后才生效
+        status: 'Pending',
         invitedAt: new Date().toISOString().split('T')[0],
       },
     ];
   }
 
   return { users, spaceShares };
+}
+
+/** 将已存在的组织成员（accountId）批量加入某个 org_space 项目 */
+export function addOrgMembersToProject(params: {
+  space: Space;
+  accountIds: string[];
+  role: 'Admin' | 'Operator';
+  roleLabel?: string;
+  spaceShares: SpaceShare[];
+}): { spaceShares: SpaceShare[] } {
+  const { space, accountIds, role, roleLabel } = params;
+  let { spaceShares } = params;
+
+  accountIds.forEach((accountId, idx) => {
+    if (space.ownerAccountId === accountId) return;
+    const exists = spaceShares.some(
+      sh => sh.spaceId === space.id && sh.targetAccountId === accountId,
+    );
+    if (exists) return;
+    spaceShares = [
+      ...spaceShares,
+      {
+        id: `share-${Date.now()}-${idx}`,
+        spaceId: space.id,
+        targetAccountId: accountId,
+        role,
+        roleLabel,
+        shareType: 'org_space',
+        status: 'Active',
+        invitedAt: new Date().toISOString().split('T')[0],
+      },
+    ];
+  });
+
+  return { spaceShares };
 }
 
 export function removeOrgMember(params: {
@@ -190,7 +226,7 @@ export function addInternalOrgMember(params: {
 
   let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
-    user = { id: `user-${Date.now()}`, email, displayName: name };
+    user = { id: `user-${Date.now()}`, email, displayName: name, homeRegionId: 'cn' };
     users = [...users, user];
   }
 
