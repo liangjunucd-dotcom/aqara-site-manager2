@@ -1,32 +1,77 @@
 import React, { useState } from 'react';
-import { INITIAL_SITES, INITIAL_ORGANIZATIONS, INITIAL_SPACES, INITIAL_SPACE_STRUCTURE_NODES } from './mockData';
-import { Site, Device, Space, SpaceStructureNode } from './types';
+import {
+  INITIAL_SITES, INITIAL_ORGANIZATIONS, INITIAL_SPACES, INITIAL_SPACE_STRUCTURE_NODES,
+  INITIAL_ORG_DEPARTMENTS, INITIAL_ORG_MEMBERS, DEMO_USERS, INITIAL_ACCOUNTS, INITIAL_SPACE_SHARES,
+  REGIONS, DESIGN_PLATFORM_PLANS, INITIAL_PROJECT_PLANS, INITIAL_PROJECT_ASSETS,
+} from './mockData';
+import {
+  Site, Device, Space, SpaceStructureNode, OrgDepartment, OrgMember, Organization, OrgRole,
+  Account, SpaceShare, User, SpaceCustomRole, ProjectPlan, ProjectAsset, estimateDesignSizeMb,
+  isEnterpriseOrg, isPersonalOrg, resolveAccountId, PERSONAL_ORG_ID,
+} from './types';
+import {
+  getAccessibleOrgs, getVisibleSpaces, getSpacePermissions, isExternalMember,
+} from './utils/accountContext';
+import {
+  inviteOrgSpaceExternal, invitePersonalSpace, removeOrgMember, removeSpaceShare, addInternalOrgMember,
+} from './utils/spaceActions';
 import SpaceHubView from './components/SpaceHubView';
 import SiteDetails from './components/SiteDetails';
 import BuilderLab from './components/BuilderLab';
 import AnalyticsView from './components/AnalyticsView';
-import SettingsView from './components/SettingsView';
 import SpaceSettingsView from './components/SpaceSettingsView';
+import OrgAdminView from './components/OrgAdminView';
+import PersonalProjectIndex from './components/PersonalProjectIndex';
+import OrgProjectIndex from './components/OrgProjectIndex';
+import SharedSpaceBanner from './components/SharedSpaceBanner';
+import AccountSwitcher from './components/AccountSwitcher';
+import RegionSwitcher from './components/RegionSwitcher';
+import PersonalSettingsView from './components/PersonalSettingsView';
+import DesignPlatformView, { DesignPlan } from './components/DesignPlatformView';
+import EnterOrgModal from './components/EnterOrgModal';
+import ProjectStoragePanel from './components/ProjectStoragePanel';
 import { 
   Building2, Layers, LineChart, Settings, Sliders, Bell, 
   Search, ShieldCheck, Cpu, Database, Compass, Smartphone, 
-  Video, HelpCircle, CheckCircle2, AlertTriangle, User, ExternalLink, Globe,
-  ArrowRight, Folder, LayoutGrid, Home, Plus, ChevronDown, Check, FolderPlus, ArrowLeft
+  Video, HelpCircle, CheckCircle2, AlertTriangle, ExternalLink,
+  ArrowRight, Folder, LayoutGrid, Home, Plus, ChevronDown, Check, FolderPlus, ArrowLeft,
+  UserCircle, LogOut, ChevronRight, Send, Puzzle, Cloud
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'sites' | 'builder' | 'analytics' | 'space-settings'>('sites');
+  const [activeTab, setActiveTab] = useState<'sites' | 'storage' | 'builder' | 'analytics' | 'space-settings'>('sites');
   
   // Organization, Space, and Subdivision Node states
-  const [organizations] = useState(INITIAL_ORGANIZATIONS);
+  const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGANIZATIONS);
   const [spaces, setSpaces] = useState<Space[]>(INITIAL_SPACES);
   const [structureNodes, setStructureNodes] = useState<SpaceStructureNode[]>(INITIAL_SPACE_STRUCTURE_NODES);
 
-  const [activeOrgId, setActiveOrgId] = useState<string>('enterprise-a'); // Default to Enterprise A
-  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null); // Start at index selector!
-  
+  const [activeOrgId, setActiveOrgId] = useState<string>('personal');
+  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
+  const [appView, setAppView] = useState<'projects' | 'org-admin' | 'personal-settings'>('projects');
+  const [currentUserId, setCurrentUserId] = useState('user-jun');
+
+  // Which platform is currently active: Site Manager (运维) vs 设计平台 (Aqara Builder)
+  const [activePlatform, setActivePlatform] = useState<'site-manager' | 'design'>('site-manager');
+  const [isAppSwitcherOpen, setIsAppSwitcherOpen] = useState(false);
+
+  // Studio Cloud 全球区域
+  const [activeRegionId, setActiveRegionId] = useState<string>('cn');
+
+  // 设计平台方案应用到 Site Manager Space 的流程
+  const [applyPlan, setApplyPlan] = useState<DesignPlan | null>(null);
+  const [applyTargetOrgId, setApplyTargetOrgId] = useState<string>('personal');
+  const [applyTargetSpaceId, setApplyTargetSpaceId] = useState<string>('__new__');
+
+  // 项目自定义角色 & 项目关联的设计方案（方案库）
+  const [spaceCustomRoles, setSpaceCustomRoles] = useState<SpaceCustomRole[]>([]);
+  const [projectPlans, setProjectPlans] = useState<ProjectPlan[]>(INITIAL_PROJECT_PLANS);
+  const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>(INITIAL_PROJECT_ASSETS);
+
   // Header and Sidebar Dropdowns
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
+  const [isEnterOrgModalOpen, setIsEnterOrgModalOpen] = useState(false);
   const [isSidebarSpaceDropdownOpen, setIsSidebarSpaceDropdownOpen] = useState(false);
 
   // New Space creation state inside Spaces Index Page
@@ -37,27 +82,26 @@ export default function App() {
   // Search inside Spaces Index Page
   const [searchSpaceQuery, setSearchSpaceQuery] = useState('');
 
-  // Persisted Space-level Admin States
-  const [members, setMembers] = useState([
-    { id: 'm1', name: 'Liangjun Ucd', email: 'liangjunucd@gmail.com', role: 'Super Admin', status: 'Active', dateAdded: '2026-01-15' },
-    { id: 'm2', name: 'System Admin', email: 'system-admin@aqara.com', role: 'System Engineer', status: 'Active', dateAdded: '2026-01-20' },
-    { id: 'm3', name: 'Hotel Staff A', email: 'staff.a@xingyuehotel.com', role: 'Operator', status: 'Active', dateAdded: '2026-02-10' },
-    { id: 'm4', name: 'Remote Engineer', email: 'remote.eng@aqara.com', role: 'Viewer', status: 'Pending', dateAdded: '2026-07-01' }
-  ]);
+  // Enterprise org structure & members (project access inherited from org)
+  const [orgDepartments, setOrgDepartments] = useState<OrgDepartment[]>(INITIAL_ORG_DEPARTMENTS);
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>(INITIAL_ORG_MEMBERS);
+  const [users, setUsers] = useState<User[]>(DEMO_USERS);
+  const [accounts, setAccounts] = useState<Account[]>(INITIAL_ACCOUNTS);
+  const [spaceShares, setSpaceShares] = useState<SpaceShare[]>(INITIAL_SPACE_SHARES);
 
   const [roles, setRoles] = useState([
-    { id: 'r1', name: 'Super Admin', desc: 'Full root access to all Studios, space configurations, and audit logs.', permissions: ['read', 'write', 'provision', 'admin'] },
+    { id: 'r1', name: 'Super Admin', desc: 'Full root access to all Studios, project configurations, and audit logs.', permissions: ['read', 'write', 'provision', 'admin'] },
     { id: 'r2', name: 'System Engineer', desc: 'Manage devices, update blueprints, and run diagnostics.', permissions: ['read', 'write', 'provision'] },
     { id: 'r3', name: 'Operator', desc: 'Trigger room automations and toggle active states.', permissions: ['read', 'write'] },
     { id: 'r4', name: 'Viewer', desc: 'Read-only telemetry and health overview.', permissions: ['read'] }
   ]);
 
   const [auditLogs, setAuditLogs] = useState([
-    { id: 'log1', time: '2026-07-05 02:15:30', user: 'liangjunucd@gmail.com', action: 'Space Structure Modified', detail: 'Added division node "Executive Suite B"' },
+    { id: 'log1', time: '2026-07-05 02:15:30', user: 'liangjunucd@gmail.com', action: 'Project Structure Modified', detail: 'Added division node "Executive Suite B"' },
     { id: 'log2', time: '2026-07-05 01:42:10', user: 'system-admin@aqara.com', action: 'Device Synchronized', detail: 'Linked Matter Hub Aqara M3' },
     { id: 'log3', time: '2026-07-04 18:20:00', user: 'liangjunucd@gmail.com', action: 'Blueprint Assigned', detail: 'Allocated blueprint v1.0 to Front Entrance' },
-    { id: 'log4', time: '2026-07-04 11:35:15', user: 'staff.a@xingyuehotel.com', action: 'Space Switched', detail: 'Checked-in room controller status' },
-    { id: 'log5', time: '2026-07-03 09:12:44', user: 'liangjunucd@gmail.com', action: 'Member Invited', detail: 'Invited remote.eng@aqara.com to space' }
+    { id: 'log4', time: '2026-07-04 11:35:15', user: 'staff.a@xingyuehotel.com', action: 'Project Switched', detail: 'Checked-in room controller status' },
+    { id: 'log5', time: '2026-07-03 09:12:44', user: 'liangjunucd@gmail.com', action: 'Member Invited', detail: 'Invited remote.eng@aqara.com to project' }
   ]);
 
   const [sites, setSites] = useState<Site[]>(() => {
@@ -118,8 +162,148 @@ export default function App() {
   // Switch Organization
   const handleOrgChange = (orgId: string) => {
     setActiveOrgId(orgId);
-    setActiveSpaceId(null); // Return to index page of spaces for this organization!
+    setActiveSpaceId(null);
+    setAppView('projects');
+    setActivePlatform('site-manager');
     setIsProfileDropdownOpen(false);
+    setIsEnterOrgModalOpen(false);
+    setIsWorkspaceSwitcherOpen(false);
+  };
+
+  const openOrgAdmin = (orgId?: string) => {
+    if (orgId && orgId !== activeOrgId) setActiveOrgId(orgId);
+    setActiveSpaceId(null);
+    setAppView('org-admin');
+    setActivePlatform('site-manager');
+    setIsProfileDropdownOpen(false);
+  };
+
+  const openPersonalSettings = () => {
+    setActiveSpaceId(null);
+    setAppView('personal-settings');
+    setActivePlatform('site-manager');
+    setIsProfileDropdownOpen(false);
+  };
+
+  // 组织拥有者移交
+  const handleTransferOwner = (newOwnerUserId: string) => {
+    const oldOwnerId = organizations.find(o => o.id === activeOrgId)?.ownerUserId ?? currentUserId;
+    setOrganizations(organizations.map(o => o.id === activeOrgId ? { ...o, ownerUserId: newOwnerUserId } : o));
+    setOrgMembers(orgMembers.map(m => {
+      if (m.orgId !== activeOrgId) return m;
+      if (m.userId === newOwnerUserId) return { ...m, orgRole: 'owner' as OrgRole, isOrgAdmin: true };
+      if (m.userId === oldOwnerId) return { ...m, orgRole: 'admin' as OrgRole, isOrgAdmin: true };
+      return m;
+    }));
+  };
+
+  // 删除组织：销毁 org_space、成员复合账号、部门等
+  const handleDeleteOrg = () => {
+    const orgId = activeOrgId;
+    setSpaces(spaces.filter(s => s.storageOrgId !== orgId));
+    setSpaceShares(spaceShares.filter(sh => {
+      const sp = spaces.find(s => s.id === sh.spaceId);
+      return sp?.storageOrgId !== orgId;
+    }));
+    setOrgMembers(orgMembers.filter(m => m.orgId !== orgId));
+    setOrgDepartments(orgDepartments.filter(d => d.orgId !== orgId));
+    setAccounts(accounts.filter(a => a.orgId !== orgId));
+    setOrganizations(organizations.filter(o => o.id !== orgId));
+    setActiveOrgId('personal');
+    setActiveSpaceId(null);
+    setAppView('projects');
+  };
+
+  const handleChangeMemberRole = (memberId: string, role: OrgRole) => {
+    setOrgMembers(orgMembers.map(m => m.id === memberId ? { ...m, orgRole: role, isOrgAdmin: role === 'admin' || role === 'owner' } : m));
+  };
+
+  // 退出组织（拥有者需先移交，UI 层已拦截）
+  const handleExitOrg = (orgId: string) => {
+    const member = orgMembers.find(m => m.orgId === orgId && m.userId === currentUserId);
+    if (!member) return;
+    const result = removeOrgMember({ memberId: member.id, orgMembers, spaceShares, accounts });
+    setOrgMembers(result.orgMembers);
+    setSpaceShares(result.spaceShares);
+    setAccounts(result.accounts);
+    if (activeOrgId === orgId) {
+      setActiveOrgId('personal');
+      setActiveSpaceId(null);
+      setAppView('projects');
+    }
+  };
+
+  // 从设计平台请求应用方案到 Site Manager
+  const openApplyPlan = (plan: DesignPlan) => {
+    setApplyPlan(plan);
+    setApplyTargetOrgId(isPersonalOrg(activeOrgId) ? 'personal' : activeOrgId);
+    setApplyTargetSpaceId('__new__');
+  };
+
+  const confirmApplyPlan = () => {
+    if (!applyPlan) return;
+    const isPersonal = isPersonalOrg(applyTargetOrgId);
+    let targetSpaceId = applyTargetSpaceId;
+    if (applyTargetSpaceId === '__new__') {
+      const newId = `space-${Date.now()}`;
+      const newSpaceObj: Space = {
+        id: newId,
+        name: applyPlan.title,
+        ownerAccountId: resolveAccountId(currentUserId, applyTargetOrgId),
+        storageOrgId: isPersonal ? null : applyTargetOrgId,
+        spaceType: isPersonal ? 'personal_space' : 'org_space',
+        description: `由设计平台方案「${applyPlan.title}」创建`,
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      setSpaces(prev => [...prev, newSpaceObj]);
+      targetSpaceId = newId;
+    }
+    // 将方案关联到目标项目的云存储（若尚未关联）
+    const planId = `pp-${Date.now()}`;
+    const assetId = `asset-${Date.now()}`;
+    setProjectPlans(prev => {
+      const exists = prev.some(pp => pp.spaceId === targetSpaceId && pp.planId === applyPlan.id);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          id: planId,
+          spaceId: targetSpaceId,
+          planId: applyPlan.id,
+          title: applyPlan.title,
+          kind: applyPlan.kind,
+          devices: applyPlan.devices,
+          sizeMb: estimateDesignSizeMb(applyPlan.devices),
+          appliedSiteIds: [],
+          associatedAt: new Date().toISOString().split('T')[0],
+        },
+      ];
+    });
+    setProjectAssets(prev => {
+      const exists = prev.some(a => a.spaceId === targetSpaceId && a.name === applyPlan.title && a.kind === 'design');
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          id: assetId,
+          spaceId: targetSpaceId,
+          name: applyPlan.title,
+          kind: 'design',
+          sizeMb: estimateDesignSizeMb(applyPlan.devices),
+          source: 'builder',
+          projectPlanId: planId,
+          createdAt: new Date().toISOString().split('T')[0],
+        },
+      ];
+    });
+    // 切回 Site Manager 并进入目标项目
+    setApplyPlan(null);
+    setActivePlatform('site-manager');
+    setActiveOrgId(applyTargetOrgId);
+    setActiveSpaceId(targetSpaceId);
+    setAppView('projects');
+    setActiveTab('sites');
+    setActiveSiteId(null);
   };
 
   // Switch Space
@@ -134,20 +318,22 @@ export default function App() {
   const handleCreateSpace = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpaceName.trim()) return;
-    const newId = newSpaceName.toLowerCase().replace(/\s+/g, '-');
+    const newId = `space-${Date.now()}`;
+    const isPersonal = isPersonalOrg(activeOrgId);
+    const ownerAccountId = resolveAccountId(currentUserId, activeOrgId);
     const newSpaceObj: Space = {
       id: newId,
       name: newSpaceName,
-      orgId: activeOrgId,
-      description: newSpaceDesc || 'Custom Business Space Node',
-      createdAt: new Date().toISOString().split('T')[0]
+      ownerAccountId,
+      storageOrgId: isPersonal ? null : activeOrgId,
+      spaceType: isPersonal ? 'personal_space' : 'org_space',
+      description: newSpaceDesc || '',
+      createdAt: new Date().toISOString().split('T')[0],
     };
     setSpaces([...spaces, newSpaceObj]);
     setNewSpaceName('');
     setNewSpaceDesc('');
     setIsNewSpaceModalOpen(false);
-    
-    // Automatically enter the newly created Space
     setActiveSpaceId(newId);
     setActiveTab('sites');
     setActiveSiteId(null);
@@ -212,52 +398,194 @@ export default function App() {
     }));
   };
 
+  const currentUser = users.find(u => u.id === currentUserId) ?? users[0];
+  const accessibleOrgs = getAccessibleOrgs(currentUserId, organizations, orgMembers);
+  const isExternal = isEnterpriseOrg(activeOrgId) && isExternalMember(currentUserId, activeOrgId, orgMembers);
+  const visibleSpaces = getVisibleSpaces(currentUserId, activeOrgId, spaces, spaceShares);
+  const spacePermissions = activeSpaceId
+    ? getSpacePermissions(currentUserId, activeOrgId, activeSpaceId, spaces, spaceShares)
+    : null;
+
+  const getStudioCount = (spaceId: string) => sites.filter(s => s.spaceId === spaceId).length;
+
+  // 当前用户已加入的组织（用于个人设置）
+  const joinedOrgs = organizations
+    .filter(o => o.type === 'enterprise')
+    .map(org => {
+      const member = orgMembers.find(m => m.orgId === org.id && m.userId === currentUserId);
+      return member ? { org, member, isOwner: org.ownerUserId === currentUserId || member.orgRole === 'owner' } : null;
+    })
+    .filter((x): x is { org: Organization; member: OrgMember; isOwner: boolean } => x !== null);
+
+  // 用户可进入管理后台的组织（internal 成员）
+  const adminOrgs = joinedOrgs
+    .filter(jo => jo.member.memberTag === 'internal')
+    .map(jo => jo.org);
+
+  const openEnterOrgModal = () => {
+    setIsProfileDropdownOpen(false);
+    setIsEnterOrgModalOpen(true);
+  };
+
+  const handleEnterOrgAdmin = (orgId: string) => {
+    setIsEnterOrgModalOpen(false);
+    openOrgAdmin(orgId);
+  };
+
+  /** 区域切换仅与 Studio Cloud / 站点运维相关，创作设计、设置页等场景不需要 */
+  const showRegionSwitcher =
+    activePlatform === 'site-manager' &&
+    appView === 'projects';
+
+  const getOwnerLabel = (item: import('./utils/accountContext').VisibleSpaceItem) => {
+    const ownerAcc = accounts.find(a => a.accountId === item.space.ownerAccountId);
+    const owner = ownerAcc ? users.find(u => u.id === ownerAcc.userId) : undefined;
+    return owner?.displayName;
+  };
+
+  const handleAddInternalMember = (email: string, name: string, departmentId?: string | null) => {
+    const result = addInternalOrgMember({
+      email, name, orgId: activeOrgId, departmentId, users, accounts, orgMembers, spaces, spaceShares,
+    });
+    setUsers(result.users);
+    setAccounts(result.accounts);
+    setOrgMembers(result.orgMembers);
+    setSpaceShares(result.spaceShares);
+  };
+
+  const handleRemoveOrgMember = (memberId: string) => {
+    const result = removeOrgMember({ memberId, orgMembers, spaceShares, accounts });
+    setOrgMembers(result.orgMembers);
+    setSpaceShares(result.spaceShares);
+    setAccounts(result.accounts);
+  };
+
+  // 统一的项目成员邀请：org_space → 外部成员；personal_space → 个人协作
+  const handleInviteMember = (email: string, name: string, role: 'Admin' | 'Operator', roleLabel?: string) => {
+    const space = spaces.find(s => s.id === activeSpaceId);
+    if (!space) return;
+    if (space.spaceType === 'org_space' && space.storageOrgId) {
+      const result = inviteOrgSpaceExternal({
+        email, name, space, orgId: space.storageOrgId, users, accounts, orgMembers, spaceShares, role, roleLabel,
+      });
+      setUsers(result.users);
+      setAccounts(result.accounts);
+      setOrgMembers(result.orgMembers);
+      setSpaceShares(result.spaceShares);
+    } else {
+      const result = invitePersonalSpace({ email, name, space, role, roleLabel, users, spaceShares });
+      setUsers(result.users);
+      setSpaceShares(result.spaceShares);
+    }
+  };
+
+  const handleRemoveShare = (shareId: string) => {
+    const space = spaces.find(s => s.id === activeSpaceId);
+    if (!space) return;
+    const result = removeSpaceShare({ shareId, spaceShares, orgMembers, accounts, space });
+    setSpaceShares(result.spaceShares);
+    setOrgMembers(result.orgMembers);
+    setAccounts(result.accounts);
+  };
+
+  // 项目自定义角色
+  const handleAddCustomRole = (name: string, mapsTo: 'Admin' | 'Operator') => {
+    if (!activeSpaceId) return;
+    setSpaceCustomRoles([...spaceCustomRoles, { id: `role-${Date.now()}`, spaceId: activeSpaceId, name, mapsTo }]);
+  };
+  const handleRemoveCustomRole = (id: string) => {
+    setSpaceCustomRoles(spaceCustomRoles.filter(r => r.id !== id));
+  };
+
+  // 将项目方案绑定到某台 Studio(站点)
+  const handleApplyPlanToSite = (projectPlanId: string, siteId: string) => {
+    setProjectPlans(projectPlans.map(pp =>
+      pp.id === projectPlanId && !pp.appliedSiteIds.includes(siteId)
+        ? { ...pp, appliedSiteIds: [...pp.appliedSiteIds, siteId] }
+        : pp,
+    ));
+  };
+
   const selectedSite = sites.find(s => s.id === activeSiteId);
   const currentOrg = organizations.find(o => o.id === activeOrgId);
   const currentSpace = spaces.find(s => s.id === activeSpaceId);
 
-  // Filtered spaces for currently selected Organization
-  const orgSpaces = spaces.filter(space => space.orgId === activeOrgId);
-  const filteredSpaces = orgSpaces.filter(space => 
-    space.name.toLowerCase().includes(searchSpaceQuery.toLowerCase()) ||
-    (space.description && space.description.toLowerCase().includes(searchSpaceQuery.toLowerCase()))
-  );
+  const activeProductLabel = activePlatform === 'site-manager' ? 'Site Manager' : 'Space Plan';
+  const currentWorkspaceName = isPersonalOrg(activeOrgId)
+    ? 'Personal Workspace'
+    : (currentOrg?.name ?? '工作区');
+  const workspaceOptions = accessibleOrgs;
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex flex-col text-slate-800 antialiased selection:bg-slate-900 selection:text-white font-sans">
       
       {/* ==================== 1. TOP NAVBAR (WITH ORG dropdown in profile avatar) ==================== */}
       <header className="h-[48px] bg-white border-b border-slate-100 px-5 flex items-center justify-between z-40 flex-shrink-0 select-none">
-        <div className="flex items-center gap-3">
-          {/* U Logo Badge */}
-          <div className="w-6 h-6 rounded-md bg-[#2b3542] flex items-center justify-center text-white font-black text-[11px] tracking-tighter">
-            U
+        <div className="flex items-center gap-0 min-w-0">
+          {/* 品牌区：固定展示 Aqara Builder（参考云效顶栏） */}
+          <div className="flex items-center gap-2 pr-4 border-r border-slate-200 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-sm">
+              A
+            </div>
+            <div className="hidden sm:flex items-baseline gap-1">
+              <span className="text-[15px] font-black text-slate-900 tracking-tight">Aqara</span>
+              <span className="text-[15px] font-semibold text-slate-600 tracking-tight">Builder</span>
+            </div>
           </div>
-          <span 
-            className="text-[13px] font-bold text-slate-600 tracking-tight cursor-pointer hover:text-slate-800 transition-colors flex items-center gap-1.5"
-            onClick={() => setActiveSpaceId(null)}
-          >
-            <span>Site Manager</span>
-            {currentSpace && (
+
+          {/* 产品切换器：仅当前产品名 + ▼，无独立 Logo */}
+          <div className="relative pl-4">
+            <button
+              onClick={() => setIsAppSwitcherOpen(!isAppSwitcherOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200/80 transition-colors cursor-pointer"
+              title="切换产品"
+            >
+              <LayoutGrid size={14} className="text-slate-500 shrink-0" />
+              <span className="text-[13px] font-semibold text-slate-800">{activeProductLabel}</span>
+              <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isAppSwitcherOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isAppSwitcherOpen && (
               <>
-                <span className="text-slate-300">/</span>
-                <span className="text-slate-400 font-medium text-xs truncate max-w-[150px]">
-                  {currentSpace.name}
-                </span>
+                <div className="fixed inset-0 z-40" onClick={() => setIsAppSwitcherOpen(false)} />
+                <div className="absolute left-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <button
+                    onClick={() => { setActivePlatform('site-manager'); setActiveSpaceId(null); setAppView('projects'); setIsAppSwitcherOpen(false); }}
+                    className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between cursor-pointer ${activePlatform === 'site-manager' ? 'text-slate-900 font-bold bg-slate-50' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span>Site Manager</span>
+                    {activePlatform === 'site-manager' && <Check size={14} className="text-emerald-500" />}
+                  </button>
+                  <button
+                    onClick={() => { setActivePlatform('design'); setIsAppSwitcherOpen(false); }}
+                    className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between cursor-pointer ${activePlatform === 'design' ? 'text-slate-900 font-bold bg-slate-50' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span>Space Plan</span>
+                    {activePlatform === 'design' && <Check size={14} className="text-emerald-500" />}
+                  </button>
+                </div>
               </>
             )}
-          </span>
+          </div>
+
+          {activePlatform === 'site-manager' && currentSpace && (
+            <span className="hidden md:flex items-center gap-1.5 ml-3 text-[12px] text-slate-400 min-w-0">
+              <span className="text-slate-300">/</span>
+              <span className="truncate max-w-[180px] font-medium">{currentSpace.name}</span>
+            </span>
+          )}
         </div>
 
         {/* Right Nav Options & Organization Selector Avatar */}
         <div className="flex items-center gap-4">
           
-          {/* Active organization status indicator badge */}
-          <div className="hidden sm:flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1 text-xs">
-            <Globe size={12} className="text-slate-400" />
-            <span className="text-slate-400 font-medium">Org:</span>
-            <span className="text-slate-700 font-extrabold">{currentOrg?.name}</span>
-          </div>
+          {/* Studio Cloud 区域切换器 — 仅站点/Studio 运维场景 */}
+          {showRegionSwitcher && (
+            <RegionSwitcher
+              regions={REGIONS}
+              activeRegionId={activeRegionId}
+              onSwitch={setActiveRegionId}
+            />
+          )}
 
           <button 
             onClick={() => alert("Simulating theme toggle: System forced to Light Theme for precise visual alignment.")}
@@ -281,49 +609,81 @@ export default function App() {
 
             {isProfileDropdownOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsProfileDropdownOpen(false)} />
-                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200/80 rounded-xl shadow-xl z-50 py-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-4 py-1.5 border-b border-slate-50 mb-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Signed in as</p>
-                    <p className="text-xs font-bold text-slate-800 truncate">liangjunucd@gmail.com</p>
-                  </div>
-
-                  <div className="px-4 py-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Switch Organization / 切换组织
-                    </p>
-                    <div className="space-y-1">
-                      {organizations.map(org => (
-                        <button
-                          key={org.id}
-                          onClick={() => handleOrgChange(org.id)}
-                          className={`w-full px-3 py-2 rounded-lg text-left text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
-                            activeOrgId === org.id 
-                              ? 'bg-slate-50 text-slate-900 border border-slate-200/60' 
-                              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-                          }`}
-                        >
-                          <span className="truncate">{org.name}</span>
-                          {activeOrgId === org.id && <Check size={12} className="text-[#3b82f6] shrink-0" />}
-                        </button>
-                      ))}
+                <div className="fixed inset-0 z-40" onClick={() => { setIsProfileDropdownOpen(false); setIsWorkspaceSwitcherOpen(false); }} />
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200/80 rounded-xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {/* 用户信息头部 */}
+                  <div className="px-4 pt-2 pb-3 flex flex-col items-center border-b border-slate-50">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-lg font-black mb-2">
+                      {currentUser.displayName.charAt(0).toUpperCase()}
                     </div>
+                    <p className="text-sm font-bold text-slate-800 truncate max-w-full">{currentUser.displayName}</p>
+                    <p className="text-[11px] text-slate-400 truncate max-w-full">{currentUser.email}</p>
                   </div>
 
-                  <div className="h-[1px] bg-slate-50 my-2" />
-                  <div className="px-2">
-                    <button 
-                      onClick={() => { alert("Configuring User Account..."); setIsProfileDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 cursor-pointer"
+                  {/* 个人设置 / 退出登录 */}
+                  <div className="px-2 py-2 border-b border-slate-50">
+                    <button
+                      onClick={openPersonalSettings}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
                     >
-                      Account Settings
+                      <UserCircle size={15} className="text-slate-400" /> 个人设置
                     </button>
-                    <button 
+                    <button
                       onClick={() => { alert("Logging out of Site Manager SaaS..."); setIsProfileDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold text-rose-500 hover:bg-rose-50 cursor-pointer"
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
                     >
-                      Log out
+                      <LogOut size={15} className="text-slate-400" /> 退出登录
                     </button>
+                  </div>
+
+                  {/* 工作区：仅展示当前工作区，点击切换展开列表 */}
+                  <div className="px-2 py-2">
+                    <p className="px-2 py-1 text-[10px] font-bold text-slate-400">工作区</p>
+                    <div className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+                      <div className={`w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-black shrink-0 ${
+                        isPersonalOrg(activeOrgId)
+                          ? 'bg-gradient-to-br from-slate-500 to-slate-700'
+                          : 'bg-gradient-to-br from-indigo-400 to-purple-500'
+                      }`}>
+                        {isPersonalOrg(activeOrgId) ? currentUser.displayName.charAt(0).toUpperCase() : currentWorkspaceName.charAt(0)}
+                      </div>
+                      <span className="flex-1 text-xs font-bold text-slate-800 truncate">{currentWorkspaceName}</span>
+                      <button
+                        onClick={() => setIsWorkspaceSwitcherOpen(!isWorkspaceSwitcherOpen)}
+                        className="text-[11px] font-bold text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer shrink-0"
+                      >
+                        切换 <ChevronRight size={12} className={`transition-transform ${isWorkspaceSwitcherOpen ? 'rotate-90' : ''}`} />
+                      </button>
+                    </div>
+
+                    {isWorkspaceSwitcherOpen && (
+                      <div className="mt-1 mx-0.5 border border-slate-100 rounded-lg overflow-hidden bg-white shadow-sm">
+                        {workspaceOptions.map(org => (
+                          <button
+                            key={org.id}
+                            onClick={() => handleOrgChange(org.id)}
+                            className={`w-full px-3 py-2.5 text-left text-xs font-bold flex items-center justify-between cursor-pointer border-b border-slate-50 last:border-0 ${
+                              activeOrgId === org.id ? 'bg-slate-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate">
+                              {isPersonalOrg(org.id) ? 'Personal Workspace' : org.name}
+                            </span>
+                            {activeOrgId === org.id && <Check size={12} className="text-emerald-500 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {adminOrgs.length > 0 && (
+                      <button
+                        onClick={() => { setIsProfileDropdownOpen(false); openEnterOrgModal(); }}
+                        className="mt-1.5 w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Building2 size={14} className="text-slate-400" /> 组织管理后台
+                        <ChevronRight size={12} className="ml-auto" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </>
@@ -333,179 +693,56 @@ export default function App() {
         </div>
       </header>
 
-      {/* ==================== 2. SPACES INDEX SELECTOR PAGE (When activeSpaceId === null) ==================== */}
-      {activeSpaceId === null ? (
-        <div className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8 animate-in fade-in duration-200 select-none">
-          
-          {/* Welcome and Header Title with organization scope */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200/60 pb-6">
-            <div>
-              <div className="flex items-center gap-2">
-                <Globe size={14} className="text-[#3b82f6]" />
-                <span className="text-[10px] uppercase font-black tracking-wider text-[#3b82f6]">{currentOrg?.name}</span>
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900 mt-1 font-sans">
-                Aqara Studio SaaS Manager
-              </h1>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                Welcome back, liangjunucd. Select a physical or logical business space context below to manage active Thread mesh clusters.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setIsNewSpaceModalOpen(true)}
-              className="px-5 py-2.5 bg-[#76ff5c] hover:bg-[#62f248] active:scale-98 text-slate-950 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md hover:shadow-lg transition-all cursor-pointer"
-            >
-              <Plus size={14} />
-              <span>New Space</span>
-            </button>
-          </div>
-
-          {/* Search bar inside Space selection page */}
-          <div className="max-w-md relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-            <input
-              type="text"
-              placeholder="Search for space / workspace..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white placeholder-slate-400 text-slate-800 text-xs focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors shadow-2xs"
-              value={searchSpaceQuery}
-              onChange={(e) => setSearchSpaceQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Spaces Grid mapping */}
-          {filteredSpaces.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-[20px] p-12 text-center shadow-xs">
-              <Folder size={32} className="text-slate-300 mx-auto mb-4" />
-              <h3 className="font-extrabold text-slate-800 text-sm">No spaces found</h3>
-              <p className="text-slate-400 text-xs max-w-sm mx-auto mt-1 mb-6">
-                No active smart spaces matched your search filters in this organization. Create a new one to begin.
-              </p>
-              <button
-                onClick={() => setIsNewSpaceModalOpen(true)}
-                className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
-              >
-                + Create Space
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSpaces.map(space => {
-                const spaceSites = sites.filter(s => s.spaceId === space.id);
-                
-                return (
-                  <div
-                    key={space.id}
-                    onClick={() => handleSpaceChange(space.id)}
-                    className="group bg-white border border-slate-200 hover:border-slate-300 rounded-[20px] p-6 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer"
-                  >
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-start">
-                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl group-hover:bg-slate-100 transition-colors">
-                          <Folder size={18} className="text-[#10b981]" />
-                        </div>
-                        
-                        <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100/60 border border-slate-200/50 px-2 py-0.5 rounded-full">
-                          {spaceSites.length} {spaceSites.length === 1 ? 'Studio' : 'Studios'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-black text-slate-900 group-hover:text-slate-950 truncate transition-colors">
-                          {space.name}
-                        </h3>
-                        <p className="text-xs text-slate-400 font-medium mt-1.5 leading-relaxed line-clamp-2">
-                          {space.description || 'Active smart business gateway container.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-50 pt-4 mt-6 flex justify-between items-center">
-                      <span className="text-[10px] font-mono font-bold text-slate-400">
-                        Created: {space.createdAt || '2026-07-05'}
-                      </span>
-                      
-                      {/* Grey square right arrow button from screenshot */}
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 hover:scale-105 active:scale-95 transition-all text-slate-800 font-bold">
-                        <ArrowRight size={16} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ==================== MODAL: PROVISION NEW SPACE ==================== */}
-          {isNewSpaceModalOpen && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none animate-in fade-in duration-200">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
-                <div className="bg-[#1e293b] p-5 text-white flex justify-between items-center">
-                  <div>
-                    <h3 className="font-extrabold text-sm">新建业务空间 (Provision Space)</h3>
-                    <p className="text-[10px] text-slate-300 mt-0.5">Create a physical or logical environment container</p>
-                  </div>
-                  <button
-                    onClick={() => setIsNewSpaceModalOpen(false)}
-                    className="text-slate-400 hover:text-white text-xs font-semibold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-                
-                <form onSubmit={handleCreateSpace} className="p-5 space-y-4 text-xs text-slate-600">
-                  <div>
-                    <label htmlFor="modal-space-name" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Space Name * (e.g. 我的家, 星悦酒店项目, 民生总部大楼)
-                    </label>
-                    <input
-                      type="text"
-                      id="modal-space-name"
-                      required
-                      placeholder="Enter custom Space name..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 font-semibold text-slate-800"
-                      value={newSpaceName}
-                      onChange={(e) => setNewSpaceName(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="modal-space-desc" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Space Description / Brief Context
-                    </label>
-                    <textarea
-                      id="modal-space-desc"
-                      rows={3}
-                      placeholder="Describe what devices are housed or managed under this Space..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 font-medium text-slate-700"
-                      value={newSpaceDesc}
-                      onChange={(e) => setNewSpaceDesc(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      id="cancel-space-create"
-                      onClick={() => setIsNewSpaceModalOpen(false)}
-                      className="px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      id="submit-space-create"
-                      className="px-4.5 py-2 bg-[#10b981] hover:bg-[#059669] text-white rounded-lg font-bold cursor-pointer transition-colors"
-                    >
-                      Provision Space
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-        </div>
+      {/* ==================== 2. PLATFORM / VIEW ROUTER ==================== */}
+      {activePlatform === 'design' ? (
+        <DesignPlatformView plans={DESIGN_PLATFORM_PLANS} onApply={openApplyPlan} />
+      ) : appView === 'personal-settings' ? (
+        <PersonalSettingsView
+          user={currentUser}
+          joinedOrgs={joinedOrgs}
+          activeOrgId={activeOrgId}
+          onBack={() => { setAppView('projects'); setActiveOrgId('personal'); }}
+          onExitOrg={handleExitOrg}
+          onEnterAdmin={(orgId) => openOrgAdmin(orgId)}
+        />
+      ) : activeSpaceId === null && appView === 'org-admin' && isEnterpriseOrg(activeOrgId) && !isExternal && currentOrg ? (
+        <OrgAdminView
+          organization={currentOrg}
+          departments={orgDepartments}
+          onUpdateDepartments={setOrgDepartments}
+          orgMembers={orgMembers}
+          users={users}
+          onAddInternalMember={handleAddInternalMember}
+          onRemoveOrgMember={handleRemoveOrgMember}
+          onChangeMemberRole={handleChangeMemberRole}
+          onTransferOwner={handleTransferOwner}
+          onDeleteOrg={handleDeleteOrg}
+          spaces={spaces}
+          onBack={() => setAppView('projects')}
+        />
+      ) : activeSpaceId === null && isPersonalOrg(activeOrgId) ? (
+        <PersonalProjectIndex
+          visibleSpaces={visibleSpaces}
+          searchQuery={searchSpaceQuery}
+          onSearchChange={setSearchSpaceQuery}
+          onSelectSpace={handleSpaceChange}
+          onCreateProject={() => setIsNewSpaceModalOpen(true)}
+          getStudioCount={getStudioCount}
+          getOwnerLabel={getOwnerLabel}
+          userDisplayName={currentUser.displayName}
+        />
+      ) : activeSpaceId === null && currentOrg ? (
+        <OrgProjectIndex
+          organization={currentOrg}
+          visibleSpaces={visibleSpaces}
+          isExternal={isExternal}
+          searchQuery={searchSpaceQuery}
+          onSearchChange={setSearchSpaceQuery}
+          onSelectSpace={handleSpaceChange}
+          onCreateProject={() => setIsNewSpaceModalOpen(true)}
+          getStudioCount={getStudioCount}
+          userDisplayName={currentUser.displayName}
+        />
       ) : (
         
         /* ==================== 3. VIEW INSIDE THE ENTERED ACTIVE SPACE ==================== */
@@ -522,7 +759,7 @@ export default function App() {
                   id="sidebar-space-switcher-btn"
                   onClick={() => setIsSidebarSpaceDropdownOpen(!isSidebarSpaceDropdownOpen)}
                   className="w-9 h-9 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm cursor-pointer transition-all shadow-xs hover:scale-105 active:scale-95"
-                  title={`Active Space: ${currentSpace?.name || 'Switch Space'}`}
+                  title={`Active Project: ${currentSpace?.name || 'Switch Project'}`}
                 >
                   {currentSpace?.name ? currentSpace.name.charAt(0).toUpperCase() : 'S'}
                 </button>
@@ -533,8 +770,9 @@ export default function App() {
                     <div className="absolute left-12 top-0 mt-0 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-left-1 duration-150">
                       <div className="px-3.5 py-1.5 border-b border-slate-100 mb-2 flex justify-between items-center">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                          Switch Space项目
+                          Switch Project
                         </span>
+                        {!isExternal && (
                         <button
                           onClick={() => {
                             setIsNewSpaceModalOpen(true);
@@ -542,29 +780,28 @@ export default function App() {
                           }}
                           className="text-[#10b981] text-[9.5px] font-bold hover:underline"
                         >
-                          + New
+                          + New Project
                         </button>
+                        )}
                       </div>
 
                       <div className="max-h-60 overflow-y-auto px-1 space-y-0.5">
-                        {spaces
-                          .filter(s => s.orgId === activeOrgId)
-                          .map(space => (
-                            <button
-                              key={space.id}
-                              onClick={() => handleSpaceChange(space.id)}
-                              className={`w-full px-2.5 py-2 rounded-lg text-left text-xs font-bold flex flex-col gap-0.5 transition-colors cursor-pointer ${
-                                activeSpaceId === space.id 
-                                  ? 'bg-slate-50 text-slate-900 border border-slate-200/50' 
-                                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 border border-transparent'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="truncate">{space.name}</span>
-                                {activeSpaceId === space.id && <Check size={11} className="text-[#10b981]" />}
-                              </div>
-                            </button>
-                          ))}
+                        {visibleSpaces.map(item => (
+                          <button
+                            key={item.space.id}
+                            onClick={() => handleSpaceChange(item.space.id)}
+                            className={`w-full px-2.5 py-2 rounded-lg text-left text-xs font-bold flex flex-col gap-0.5 transition-colors cursor-pointer ${
+                              activeSpaceId === item.space.id
+                                ? 'bg-slate-50 text-slate-900 border border-slate-200/50'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 border border-transparent'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="truncate">{item.space.name}</span>
+                              {activeSpaceId === item.space.id && <Check size={11} className="text-[#10b981]" />}
+                            </div>
+                          </button>
+                        ))}
                       </div>
 
                       <div className="h-[1px] bg-slate-100 my-2" />
@@ -572,12 +809,13 @@ export default function App() {
                         <button
                           onClick={() => {
                             setActiveSpaceId(null);
+                            setAppView('projects');
                             setIsSidebarSpaceDropdownOpen(false);
                           }}
                           className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
                         >
                           <Home size={12} className="text-slate-400" />
-                          <span>返回空间大厅 (Back to Index)</span>
+                          <span>返回项目大厅 (Back to Index)</span>
                         </button>
                       </div>
                     </div>
@@ -607,7 +845,28 @@ export default function App() {
                 </span>
               </button>
 
-              {/* Topology / Builder Lab Design Tab */}
+              {/* Project Cloud Storage */}
+              <button
+                id="tab-storage"
+                onClick={() => {
+                  setActiveTab('storage');
+                  setActiveSiteId(null);
+                }}
+                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
+                  activeTab === 'storage'
+                    ? 'bg-slate-100 text-slate-950'
+                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }`}
+                title="Project Cloud Storage"
+              >
+                <Cloud size={20} />
+                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                  云存储
+                </span>
+              </button>
+
+              {/* Topology / Builder Lab — hidden for external */}
+              {!isExternal && (
               <button
                 id="tab-builder"
                 onClick={() => {
@@ -629,8 +888,9 @@ export default function App() {
                   Topology Design
                 </span>
               </button>
+              )}
 
-              {/* Analytics / Cloud monitoring Tab */}
+              {!isExternal && (
               <button
                 id="tab-analytics"
                 onClick={() => {
@@ -651,22 +911,24 @@ export default function App() {
                   Studio Cloud Logs
                 </span>
               </button>
+              )}
 
-              {/* Return to Spaces overview map */}
+              {!isExternal && (
               <button
-                onClick={() => setActiveSpaceId(null)}
+                onClick={() => { setActiveSpaceId(null); setAppView('projects'); }}
                 className="p-2 rounded-lg text-slate-400 hover:text-[#10b981] hover:bg-emerald-50 transition-all flex items-center justify-center relative group cursor-pointer"
-                title="Back to All Spaces"
+                title="Back to All Projects"
               >
                 <LayoutGrid size={20} />
                 <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  All Spaces 大厅
+                  All Projects
                 </span>
               </button>
+              )}
             </div>
 
-            {/* Bottom Settings Gear represents Space settings inside Space context */}
             <div className="flex flex-col items-center gap-2 w-full">
+              {!isExternal && (
               <button
                 id="tab-space-settings"
                 onClick={() => {
@@ -678,19 +940,26 @@ export default function App() {
                     ? 'bg-slate-100 text-slate-950' 
                     : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
                 }`}
-                title="Space Admin Config"
+                title="Project Admin Config"
               >
                 <Settings size={20} />
                 <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  Space Settings
+                  Project Settings
                 </span>
               </button>
+              )}
             </div>
           </aside>
 
-          {/* Main Content View Frame */}
           <div className="flex-1 flex flex-col min-w-0 bg-[#fbfbfb]">
             <main className="flex-1 overflow-y-auto p-4 space-y-4">
+              {spacePermissions && currentSpace && (
+                <SharedSpaceBanner
+                  permissions={spacePermissions}
+                  spaceType={currentSpace.spaceType}
+                  orgName={currentOrg?.name}
+                />
+              )}
               
               {activeSiteId && selectedSite ? (
                 <SiteDetails
@@ -709,9 +978,21 @@ export default function App() {
                       activeSpaceId={activeSpaceId}
                       spaces={spaces}
                       structureNodes={structureNodes}
+                      projectPlans={projectPlans.filter(pp => pp.spaceId === activeSpaceId)}
                       onSelectSite={setActiveSiteId}
                       onUpdateSites={setSites}
                       onUpdateNodes={setStructureNodes}
+                    />
+                  )}
+
+                  {activeTab === 'storage' && activeSpaceId && currentSpace && (
+                    <ProjectStoragePanel
+                      space={currentSpace}
+                      assets={projectAssets.filter(a => a.spaceId === activeSpaceId)}
+                      plans={projectPlans.filter(p => p.spaceId === activeSpaceId)}
+                      sites={sites.filter(s => s.spaceId === activeSpaceId)}
+                      structureNodes={structureNodes}
+                      onApplyToSite={handleApplyPlanToSite}
                     />
                   )}
 
@@ -731,21 +1012,26 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'space-settings' && (
+                  {activeTab === 'space-settings' && activeSpaceId && (
                     <SpaceSettingsView
                       activeSpaceId={activeSpaceId}
                       spaces={spaces}
                       onUpdateSpaces={setSpaces}
-                      structureNodes={structureNodes}
-                      onUpdateNodes={setStructureNodes}
-                      members={members}
-                      onUpdateMembers={setMembers}
-                      roles={roles}
-                      onUpdateRoles={setRoles}
-                      auditLogs={auditLogs}
-                      onUpdateAuditLogs={setAuditLogs}
+                      accounts={accounts}
+                      users={users}
+                      orgMembers={orgMembers}
+                      spaceShares={spaceShares}
+                      permissions={spacePermissions}
+                      customRoles={spaceCustomRoles}
+                      onAddCustomRole={handleAddCustomRole}
+                      onRemoveCustomRole={handleRemoveCustomRole}
+                      onInviteMember={handleInviteMember}
+                      onRemoveShare={handleRemoveShare}
                       onDeleteSpace={(spaceId) => {
                         setSpaces(spaces.filter(s => s.id !== spaceId));
+                        setSpaceShares(spaceShares.filter(sh => sh.spaceId !== spaceId));
+                        setProjectPlans(projectPlans.filter(pp => pp.spaceId !== spaceId));
+                        setProjectAssets(projectAssets.filter(a => a.spaceId !== spaceId));
                         setActiveSpaceId(null);
                       }}
                     />
@@ -756,75 +1042,115 @@ export default function App() {
             </main>
           </div>
 
-          {/* ==================== SUB-MODAL: PROVISION NEW SPACE FOR QUICK TRIGGER ==================== */}
-          {isNewSpaceModalOpen && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none animate-in fade-in duration-200">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
-                <div className="bg-[#1e293b] p-5 text-white flex justify-between items-center">
-                  <div>
-                    <h3 className="font-extrabold text-sm">新建业务空间 (Provision Space)</h3>
-                    <p className="text-[10px] text-slate-300 mt-0.5">Create a physical or logical environment container</p>
-                  </div>
-                  <button
-                    onClick={() => setIsNewSpaceModalOpen(false)}
-                    className="text-slate-400 hover:text-white text-xs font-semibold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-                
-                <form onSubmit={handleCreateSpace} className="p-5 space-y-4 text-xs text-slate-600">
-                  <div>
-                    <label htmlFor="modal-space-name-quick" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Space Name * (e.g. 我的家, 星悦酒店项目, 民生总部大楼)
-                    </label>
-                    <input
-                      type="text"
-                      id="modal-space-name-quick"
-                      required
-                      placeholder="Enter custom Space name..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 font-semibold text-slate-800"
-                      value={newSpaceName}
-                      onChange={(e) => setNewSpaceName(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="modal-space-desc-quick" className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                      Space Description / Brief Context
-                    </label>
-                    <textarea
-                      id="modal-space-desc-quick"
-                      rows={3}
-                      placeholder="Describe what devices are housed or managed under this Space..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 font-medium text-slate-700"
-                      value={newSpaceDesc}
-                      onChange={(e) => setNewSpaceDesc(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsNewSpaceModalOpen(false)}
-                      className="px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4.5 py-2 bg-[#10b981] hover:bg-[#059669] text-white rounded-lg font-bold cursor-pointer transition-colors"
-                    >
-                      Provision Space
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
         </div>
       )}
+
+      {isNewSpaceModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="bg-[#1e293b] p-5 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-sm">新建项目</h3>
+                <p className="text-[10px] text-slate-300 mt-0.5">
+                  {isPersonalOrg(activeOrgId) ? '创建在个人工作区' : `创建在 ${currentOrg?.name ?? '组织'}`}
+                </p>
+              </div>
+              <button onClick={() => setIsNewSpaceModalOpen(false)} className="text-slate-400 hover:text-white text-xs cursor-pointer">关闭</button>
+            </div>
+            <form onSubmit={handleCreateSpace} className="p-5 space-y-4 text-xs">
+              <input required placeholder="项目名称" className="w-full px-3 py-2 border rounded-lg" value={newSpaceName} onChange={e => setNewSpaceName(e.target.value)} />
+              <textarea rows={3} placeholder="项目描述" className="w-full px-3 py-2 border rounded-lg" value={newSpaceDesc} onChange={e => setNewSpaceDesc(e.target.value)} />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setIsNewSpaceModalOpen(false)} className="px-4 py-2 border rounded-lg">取消</button>
+                <button type="submit" className="px-4 py-2 bg-[#10b981] text-white rounded-lg font-bold">创建</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 设计平台方案 → Site Manager 应用弹窗 ==================== */}
+      {applyPlan && (() => {
+        const targetIsPersonal = isPersonalOrg(applyTargetOrgId);
+        const targetOwnerAccountId = resolveAccountId(currentUserId, applyTargetOrgId);
+        const targetSpaces = spaces.filter(s =>
+          targetIsPersonal
+            ? (s.spaceType === 'personal_space' && s.ownerAccountId === targetOwnerAccountId)
+            : s.storageOrgId === applyTargetOrgId
+        );
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-5 text-white">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-100">
+                  {applyPlan.kind === 'plugin' ? <Puzzle size={12} /> : <Send size={12} />}
+                  应用到 Site Manager
+                </div>
+                <h3 className="font-extrabold text-base mt-1">{applyPlan.title}</h3>
+                <p className="text-[11px] text-blue-100 mt-0.5">{applyPlan.devices} 设备 · 来自 Aqara Builder 设计平台</p>
+              </div>
+              <div className="p-5 space-y-4 text-xs">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5">选择目标工作区</label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-lg bg-white font-bold text-slate-700"
+                    value={applyTargetOrgId}
+                    onChange={e => { setApplyTargetOrgId(e.target.value); setApplyTargetSpaceId('__new__'); }}
+                  >
+                    <option value="personal">个人工作区</option>
+                    {accessibleOrgs.filter(o => o.type === 'enterprise').map(o => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    方案将写入该工作区的存储配额（{targetIsPersonal ? '个人配额' : '组织配额'}）。
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5">应用到项目 (Space)</label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-lg bg-white font-bold text-slate-700"
+                    value={applyTargetSpaceId}
+                    onChange={e => setApplyTargetSpaceId(e.target.value)}
+                  >
+                    <option value="__new__">＋ 新建项目「{applyPlan.title}」</option>
+                    {targetSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button onClick={() => setApplyPlan(null)} className="px-4 py-2 border rounded-lg font-bold text-slate-600 cursor-pointer">取消</button>
+                  <button onClick={confirmApplyPlan} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold cursor-pointer flex items-center gap-1.5">
+                    <Send size={13} /> 确认应用
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==================== 进入组织管理后台（云效式选择页） ==================== */}
+      {isEnterOrgModalOpen && (
+        <EnterOrgModal
+          adminOrgs={adminOrgs}
+          onSelect={handleEnterOrgAdmin}
+          onCreateOrg={() => alert('创建组织流程（演示）')}
+          onClose={() => setIsEnterOrgModalOpen(false)}
+        />
+      )}
+
+      {/* ==================== 右下角悬浮：演示身份切换 ==================== */}
+      <AccountSwitcher
+        users={users}
+        currentUserId={currentUserId}
+        onSwitch={(userId) => {
+          setCurrentUserId(userId);
+          setActiveOrgId('personal');
+          setActiveSpaceId(null);
+          setAppView('projects');
+          setActivePlatform('site-manager');
+        }}
+      />
 
     </div>
   );

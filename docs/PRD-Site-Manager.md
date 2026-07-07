@@ -6,6 +6,14 @@
 |------|----------|--------|----------|------|
 | v0.6 | 初稿：背景、定位、原则、4.1 | Jun | 2026.07.03 | — |
 | v0.7 | 融入 Aqara 全链路架构，优化背景/定位/功能章节 | Jun | 2026.07.06 | 对齐 Builder → Cloud → Studio → 用户 闭环 |
+| **v1.3** | **账号-空间-权限-成员体系；产品切换；项目云存储；组织管理后台；B 端多 Studio 方案分发** | Jun | 2026.07.08 | Mock 原型已部署 Vercel + GitHub Pages |
+
+### 在线原型
+
+| 环境 | 地址 |
+|------|------|
+| Vercel | https://aqara-site-manager2.vercel.app |
+| GitHub Pages | https://liangjunucd-dotcom.github.io/aqara-site-manager2/ |
 
 ---
 
@@ -265,11 +273,52 @@ aqarastudio-xxxx
 
 ---
 
-### 4.5 Blueprint 方案关联
+### 4.5 方案设计与项目云存储（V1.3 重构）
 
-**功能概述：** 展示 Studio 与 Builder 产出 Blueprint 的绑定关系，提供运维操作入口。
+**功能概述：** 方案设计文件不再以顶栏面板展示，而是纳入 **项目级云存储**，与日志备份、配置快照共享配额。
 
-**链路位置：** 设计（Builder 产出）→ 运维（本功能展示）→ 实施（Studio 导入）
+**链路位置：** 设计（Aqara Builder 导入）→ 运维（云存储纳管）→ 实施（按 Studio 分发）
+
+**信息架构：**
+
+```
+项目内左侧菜单
+├── Studios Hub        — 站点运维（卡片展示「运行方案」）
+├── 云存储              — 项目共享存储（方案 / 日志 / 快照）
+├── Topology Design
+├── Studio Cloud Logs
+└── Project Settings   — 基本信息 + 项目成员
+```
+
+**云存储能力：**
+
+| 资源类型 | 来源 | 说明 |
+|----------|------|------|
+| 方案设计 | Aqara Builder 导入 | 存入项目后，可分发到多台 Studio |
+| 日志备份 | Studio Cloud 自动上传 | 运行日志、事件快照归档 |
+| 配置快照 | 系统 / Studio | 控制器配置备份 |
+
+**配额：** 个人项目默认 5 GB；组织项目默认 50 GB（可扩展）。
+
+**B 端多 Studio 差异化：** 同一项目可关联多个方案；每台 Studio 绑定不同方案（如酒店标准客房 vs 行政套房）。云存储页展示「已绑定 N 台 Studio」并支持分发；Studio 卡片右上角显示当前运行方案名。
+
+**与旧版 Blueprint 标签关系：** 若 Studio 已绑定项目方案，优先展示方案名；否则回退至 legacy Blueprint 标签；均未绑定显示「未绑定方案」。
+
+**数据流：**
+
+```
+Aqara Builder 发布方案
+    → 应用到 Site Manager 项目（写入云存储）
+        → 运维人员在云存储中「分发到 Studio」
+            → Studio 卡片展示运行方案
+                → Aqara Studio 本地运行实例
+```
+
+---
+
+### 4.5.1 Blueprint 方案关联（Legacy 运维入口）
+
+**功能概述：** Studio 卡片上 legacy Blueprint 绑定关系的 Popover 运维入口（与项目云存储方案并存，逐步迁移）。
 
 **Popover 操作：**
 
@@ -277,16 +326,6 @@ aqarastudio-xxxx
 - **在 Aqara Studio 中打开**
 - 下载（JSON）
 - 删除绑定（destructive）
-
-**数据流：**
-
-```
-Builder 设计 Blueprint
-    → 发布至 Space（本体/标准库）
-        → Site Manager 展示绑定关系
-            → Installer 在 Aqara Studio 导入
-                → 下发至 Studio M300
-```
 
 ---
 
@@ -350,20 +389,97 @@ Builder 设计 Blueprint
 
 ---
 
-### 4.9 成员与权限管理
+### 4.9 成员与权限管理（V1.3 统一模型）
 
-**功能概述：** Space 级 RBAC，驱动远程隧道与操作粒度。
+**功能概述：** 区分 **组织成员**、**外部成员**、**项目成员** 三层，项目设置仅管理项目成员。
 
 **链路位置：** 运维阶段定义 → 日常阶段（App / 远程 Studio）执行
 
+#### 4.9.1 组织层（组织管理后台）
+
+| 模块 | 说明 |
+|------|------|
+| 基本信息 | 企业名称、描述、拥有者 |
+| 成员管理 | 组织成员 / 外部成员（`orgRole`: owner / admin / member / external） |
+| 角色管理 | 组织级角色模板 |
+| 组织架构 | 部门树 |
+
+入口：头像下拉 → 「组织管理后台」→ 云效式「进入应用」选企业。
+
+#### 4.9.2 项目层（Project Settings）
+
+| 模块 | 说明 |
+|------|------|
+| 基本信息 | 项目名称、描述、删除 |
+| 项目成员 | 邀请协作者，角色映射 Admin / Operator |
+| 自定义角色 | 展示名自定义（如「爸爸」「妈妈」），权限仍映射 Admin/Operator |
+
+**不在项目设置体现：** 组织成员 vs 外部成员的类型区分——归组织管理后台。
+
+#### 4.9.3 空间类型
+
+| 类型 | 标识 | 说明 |
+|------|------|------|
+| 个人空间 | `personal_space` | Personal Workspace，默认工作区，不可进组织管理后台 |
+| 组织空间 | `org_space` | 企业项目，支持组织成员与外部协作者 |
+
+#### 4.9.4 项目角色
+
 | 角色 | 权限 | 场景 |
 |------|------|------|
-| Super Admin | read/write/provision/admin | 所有者 |
-| System Engineer | read/write/provision | 集成商 |
-| Operator | read/write | 酒店运维 |
-| Viewer | read | 审计 |
+| Owner | 全部 + 删除项目 | 创建者 |
+| Admin | 编辑设置、管理成员、Provision | 集成商 / 运维主管 |
+| Operator | 运维操作，无设置权限 | 现场工程师 / 外部 Installer |
 
-**B/C 差异：** 商用完整 RBAC；家庭简化为所有者 + 家庭成员。
+**B/C 差异：** 商用完整 RBAC + 组织后台；家庭简化为所有者 + 家庭成员共享。
+
+---
+
+### 4.15 账号与工作区体系（V1.3 新增）
+
+**模型：** `Account → Space(Project) → Studio`
+
+| 概念 | 说明 |
+|------|------|
+| Account | 个人账号 `user_id`；组织复合账号 `user_id + org_id` |
+| Personal Workspace | 默认工作区，所有用户必有 |
+| 组织工作区 | 用户加入企业后的工作上下文 |
+| 工作区切换 | 头像下拉仅展示当前工作区 + 「切换」展开列表 |
+
+**顶栏品牌：** 固定 **Aqara Builder** 品牌；右侧产品切换器为「当前产品名 + ▼」（Site Manager / Space Plan），参考阿里云效。
+
+**默认登录：** 进入 Site Manager 控制台（非设计平台）。
+
+---
+
+### 4.16 Aqara Builder 产品切换（V1.3 新增）
+
+| 产品 | 说明 |
+|------|------|
+| Site Manager | Studio Cloud 运维控制台 |
+| Space Plan | Aqara Builder 设计平台（方案库、插件） |
+
+设计平台方案可「应用到 Site Manager」：选择工作区 + 目标项目（或新建）→ 写入项目云存储。
+
+---
+
+### 4.17 Studio Cloud 区域切换（V1.3 新增）
+
+顶栏常驻 **Studio Cloud 区域**切换器（仅 Site Manager 站点运维场景显示，设计平台不显示）。
+
+不同国家/地区连接不同 Studio 云节点，影响可见项目数据来源。
+
+---
+
+### 4.18 个人设置（V1.3 新增）
+
+入口：头像下拉 → 个人设置
+
+| 模块 | 说明 |
+|------|------|
+| 个人信息 | 显示名、邮箱 |
+| 已加入组织 | 列表 + 退出组织（拥有者需先移交） |
+| 进入组织管理后台 | 从已加入组织跳转 |
 
 ---
 
@@ -422,21 +538,40 @@ Builder 设计 Blueprint
 
 ## 五、数据模型
 
-### 5.1 实体关系
+### 5.1 实体关系（V1.3）
 
 ```
-Organization
-  └── Space (spaceId, spaceType, status)
-        ├── SpaceStructureNode (树形分区)
-        ├── SpaceMember (userId, roleId)
-        ├── Blueprint (来自 Builder 发布)
-        └── Studio (studioId)
-              ├── blueprintId
-              ├── timeline[] (健康历史)
-              └── Device[]
+User
+  └── Account (personal | org_member)
+        └── Organization (enterprise only)
+              ├── OrgMember (internal | external)
+              ├── OrgDepartment
+              └── OrgRole
+
+Space (personal_space | org_space)
+  ├── SpaceStructureNode (树形分区)
+  ├── SpaceShare (项目成员 + 角色)
+  ├── SpaceCustomRole (自定义角色名 → Admin/Operator)
+  ├── ProjectStorage (云存储配额)
+  │     ├── ProjectAsset (design | log-backup | snapshot)
+  │     └── ProjectPlan (方案库，可分发)
+  └── Studio (Site)
+        ├── appliedProjectPlanId (via ProjectPlan.appliedSiteIds)
+        ├── timeline[] (健康历史)
+        └── Device[]
 ```
 
-### 5.2 与全链路数据流
+### 5.2 核心类型
+
+| 类型 | 字段要点 |
+|------|----------|
+| `Space` | `spaceType`, `storageOrgId`, `storageQuotaGb` |
+| `SpaceShare` | `role` (Admin/Operator), `roleLabel`, `shareType` |
+| `ProjectPlan` | `spaceId`, `planId`, `appliedSiteIds[]`, `sizeMb` |
+| `ProjectAsset` | `kind`, `source`, `projectPlanId?` |
+| `OrgMember` | `orgRole` (owner/admin/member/external) |
+
+### 5.3 与全链路数据流
 
 | 数据 | 来源 | 去向 | 说明 |
 |------|------|------|------|
@@ -469,6 +604,7 @@ Organization
 | M3 绑定闭环 | v1.0 | 4.6–4.7、4.11 | 运维↔实施 联调 |
 | M4 权限交付 | v1.1 | 4.9–4.10、4.12–4.13 | 运维→日常 交付 |
 | M5 数据闭环 | v1.2 | 4.14 深化 + 数据中台对接 | 运维→数据→Builder |
+| **M6 账号权限** | **v1.3** | **4.15–4.18、4.9 重构、4.5 云存储** | **运维：多租户 + 方案分发** |
 
 ---
 
@@ -504,10 +640,14 @@ Organization
 |----------|:----:|:----:|:----:|:----:|:----:|
 | 4.1 创建 Space | | ● | | | |
 | 4.4 Studio 卡片 | | ● | ○ | | ○ |
-| 4.5 Blueprint | ● | ● | ○ | | |
+| 4.5 方案/云存储 | ● | ● | ○ | | |
 | 4.6 设备绑定 | | ○ | ● | | |
 | 4.8 Studio 详情 | | ● | ○ | ○ | |
 | 4.9 权限 | | ● | | ● | |
+| 4.15 账号工作区 | | ● | | ● | |
+| 4.16 Builder 切换 | ● | ● | | | |
+| 4.17 区域切换 | | ● | ○ | | ○ |
+| 4.18 个人设置 | | ● | | ● | |
 | 4.10 交付 | | ● | ○ | ● | |
 | 4.11 Builder Lab | ● | ● | | | |
 | 4.14 日志遥测 | | ● | | ○ | ● |

@@ -4,17 +4,17 @@ export interface Device {
   type: 'hub' | 'camera' | 'sensor' | 'switch' | 'lock' | 'light' | 'curtain';
   model: string;
   status: 'online' | 'offline' | 'warning';
-  batteryLevel?: number; // percentage
-  signalStrength?: number; // dBm or percentage
+  batteryLevel?: number;
+  signalStrength?: number;
   room?: string;
-  x?: number; // relative percentage position (0-100) on floor plan
-  y?: number; // relative percentage position (0-100) on floor plan
+  x?: number;
+  y?: number;
 }
 
 export interface SiteTimelinePoint {
-  time: string; // "HH:MM" format
+  time: string;
   status: 'online' | 'warning' | 'offline';
-  length: number; // visual scale length of this block
+  length: number;
 }
 
 export interface Site {
@@ -31,29 +31,148 @@ export interface Site {
   modelType?: string;
   deviceCountBadge?: string;
   mergeLink?: boolean;
-  spaceId?: string; // Links this Studio to a specific Space
-  structureNodeId?: string | null; // Links this Studio to a specific sub-node in the Space structure
-  blueprint?: string; // e.g. "blueprint v1.0" or "binding scheme v2.1"
+  spaceId?: string;
+  structureNodeId?: string | null;
+  blueprint?: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
 }
 
 export interface Organization {
   id: string;
   name: string;
+  type?: 'personal' | 'enterprise';
+  ownerUserId?: string;
+  createdAt?: string;
+  description?: string;
+}
+
+/** 组织内成员角色：拥有者 / 管理员 / 普通成员 / 外部成员 */
+export type OrgRole = 'owner' | 'admin' | 'member' | 'external';
+
+/** Studio Cloud 区域节点：不同国家/地区连接到不同的 Studio 云 */
+export interface Region {
+  id: string;
+  name: string;
+  flag: string;
+  cloudEndpoint: string;
+  latency?: string;
+}
+
+export type AccountType = 'personal' | 'org_member';
+export type MemberTag = 'internal' | 'external';
+export type SpaceType = 'personal_space' | 'org_space';
+export type SpaceRole = 'Owner' | 'Admin' | 'Operator';
+export type ShareType = 'personal_space' | 'org_space';
+
+/** Account 主表：个人原生账号 user_id；组织复合账号 user_id_org_id */
+export interface Account {
+  accountId: string;
+  userId: string;
+  orgId: string | null;
+  accountType: AccountType;
+  memberTag: MemberTag | null;
 }
 
 export interface Space {
   id: string;
   name: string;
-  orgId: string;
+  ownerAccountId: string;
+  storageOrgId: string | null;
+  spaceType: SpaceType;
   description?: string;
   createdAt: string;
+  /** 项目云存储配额（GB），个人默认 5，组织默认 50 */
+  storageQuotaGb?: number;
+}
+
+/** 项目云存储中的资源条目 */
+export type ProjectAssetKind = 'design' | 'log-backup' | 'snapshot';
+
+export interface ProjectAsset {
+  id: string;
+  spaceId: string;
+  name: string;
+  kind: ProjectAssetKind;
+  sizeMb: number;
+  source: 'builder' | 'studio-cloud' | 'system';
+  /** 若为设计文件，关联到项目方案 id */
+  projectPlanId?: string;
+  createdAt: string;
+}
+
+/** Space 共享权限关联表 */
+export interface SpaceShare {
+  id: string;
+  spaceId: string;
+  targetAccountId: string;
+  role: SpaceRole;
+  /** 展示用角色名（如「爸爸」「妈妈」）；权限仍由 role(Admin/Operator) 决定 */
+  roleLabel?: string;
+  shareType: ShareType;
+  status: 'Active' | 'Pending';
+  invitedAt: string;
+}
+
+/** 项目自定义角色：仅映射到 Admin / Operator 权限，不单独配置细粒度权限 */
+export interface SpaceCustomRole {
+  id: string;
+  spaceId: string;
+  name: string;
+  mapsTo: 'Admin' | 'Operator';
+}
+
+/** 设计平台方案关联到项目后形成的「项目方案」，可分发绑定到项目下不同 Studio */
+export interface ProjectPlan {
+  id: string;
+  spaceId: string;
+  planId: string;
+  title: string;
+  kind: 'plan' | 'plugin';
+  devices: number;
+  sizeMb: number;
+  /** 已应用该方案的 Studio(站点) id 列表 */
+  appliedSiteIds: string[];
+  associatedAt: string;
+}
+
+/** 估算方案设计文件占用（MB） */
+export const estimateDesignSizeMb = (devices: number) =>
+  Math.max(0.5, Math.round(devices * 0.18 * 10) / 10);
+
+export interface OrgDepartment {
+  id: string;
+  orgId: string;
+  name: string;
+  parentId?: string | null;
+}
+
+/** 组织成员（internal 手动录入 / external 接受 org_space 邀请自动入组） */
+export interface OrgMember {
+  id: string;
+  orgId: string;
+  userId: string;
+  accountId: string;
+  name: string;
+  email: string;
+  memberTag: MemberTag;
+  departmentId?: string | null;
+  isOrgAdmin: boolean;
+  orgRole?: OrgRole;
+  status: 'Active' | 'Pending';
+  lastActiveAt?: string;
+  dateAdded: string;
 }
 
 export interface SpaceStructureNode {
   id: string;
   name: string;
   spaceId: string;
-  parentId?: string | null; // hierarchical parent
+  parentId?: string | null;
 }
 
 export interface PresetFloorPlan {
@@ -61,4 +180,20 @@ export interface PresetFloorPlan {
   name: string;
   dimensions: string;
   rooms: string[];
+}
+
+export const PERSONAL_ORG_ID = 'personal';
+export const isEnterpriseOrg = (orgId: string) => orgId.startsWith('enterprise-');
+export const isPersonalOrg = (orgId: string) => orgId === PERSONAL_ORG_ID;
+
+export function personalAccountId(userId: string): string {
+  return userId;
+}
+
+export function orgAccountId(userId: string, orgId: string): string {
+  return `${userId}_${orgId}`;
+}
+
+export function resolveAccountId(userId: string, accountOrgId: string): string {
+  return isPersonalOrg(accountOrgId) ? personalAccountId(userId) : orgAccountId(userId, accountOrgId);
 }

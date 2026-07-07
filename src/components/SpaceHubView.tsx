@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Site, Device, Space, SpaceStructureNode, SiteTimelinePoint } from '../types';
+import { Site, Device, Space, SpaceStructureNode, SiteTimelinePoint, ProjectPlan } from '../types';
 import { 
   Search, Grid, List, Plus, Folder, FolderPlus, Edit2, Trash2, 
   Check, ChevronDown, ChevronRight, Cpu, Video, Lock, Compass, Smartphone, 
   Lightbulb, HelpCircle, Star, PlusCircle, AlertTriangle, Home, Server,
   MoreVertical, Pin, FolderTree, Settings, Bell, Key, RefreshCw, Database, Shield, Activity,
-  Code
+  Code, LayoutGrid, Puzzle
 } from 'lucide-react';
 
 const getStudioSpecs = (studioId: string, studioNameOriginal: string, indexInList: number, totalInList: number) => {
@@ -225,6 +225,7 @@ interface SpaceHubViewProps {
   activeSpaceId: string;
   spaces: Space[];
   structureNodes: SpaceStructureNode[];
+  projectPlans?: ProjectPlan[];
   onSelectSite: (siteId: string) => void;
   onUpdateSites: (updated: Site[]) => void;
   onUpdateNodes: (updated: SpaceStructureNode[]) => void;
@@ -235,6 +236,7 @@ export default function SpaceHubView({
   activeSpaceId,
   spaces,
   structureNodes,
+  projectPlans = [],
   onSelectSite,
   onUpdateSites,
   onUpdateNodes
@@ -339,6 +341,33 @@ export default function SpaceHubView({
     if (!confirm('确认解除该 Studio 的蓝图绑定？此操作不可撤销。')) return;
     onUpdateSites(sites.map(s => s.id === studioId ? { ...s, blueprint: undefined } : s));
     setOpenBlueprintId(null);
+  };
+
+  const getStudioPlan = (studioId: string) =>
+    projectPlans.find(p => p.appliedSiteIds.includes(studioId));
+
+  const renderSchemeBadge = (studio: Site, compact = false) => {
+    const plan = getStudioPlan(studio.id);
+    if (plan) {
+      const PlanIcon = plan.kind === 'plugin' ? Puzzle : LayoutGrid;
+      return (
+        <div
+          className={`flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-100 rounded-full text-[10px] font-semibold text-blue-700 shrink-0 ${compact ? 'w-[118px]' : ''}`}
+          title={`运行方案：${plan.title} · ${plan.devices} 设备`}
+        >
+          <PlanIcon size={10} className="shrink-0 text-blue-500" />
+          <span className="truncate min-w-0">{plan.title}</span>
+        </div>
+      );
+    }
+    if (studio.blueprint) {
+      return renderBlueprintBadge(studio);
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 border border-dashed border-slate-200 rounded-full text-[10px] font-medium text-slate-400 shrink-0">
+        未绑定方案
+      </span>
+    );
   };
 
   const renderBlueprintBadge = (studio: Site) => {
@@ -848,7 +877,7 @@ export default function SpaceHubView({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
               <h3 className="font-bold text-slate-800 text-xs tracking-tight font-sans">
-                Space Management
+                Project Structure
               </h3>
             </div>
             <button 
@@ -871,7 +900,7 @@ export default function SpaceHubView({
           <div className="space-y-1 font-sans">
             {renderTreeNodeItem(
               'all', 
-              currentSpace?.name ? currentSpace.name.replace(/\s*\(.*?\)\s*/g, '') : 'Active Space',
+              currentSpace?.name ? currentSpace.name.replace(/\s*\(.*?\)\s*/g, '') : 'Active Project',
               roots, 
               0, 
               true
@@ -899,7 +928,7 @@ export default function SpaceHubView({
                   onMouseLeave={handleMouseLeaveTrigger}
                   onClick={() => setIsSidebarFloatingOpen(!isSidebarFloatingOpen)}
                   className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer shrink-0 border border-slate-200/40 shadow-xs flex items-center justify-center"
-                  title="Space Management"
+                  title="Project Structure"
                 >
                   <FolderTree size={16} />
                 </button>
@@ -921,7 +950,7 @@ export default function SpaceHubView({
                 className="hover:text-slate-800 cursor-pointer transition-colors"
                 onClick={() => setSelectedNodeId('all')}
               >
-                {currentSpace?.name ? currentSpace.name.replace(/\s*\(.*?\)\s*/g, '') : '查看所有空间'}
+                {currentSpace?.name ? currentSpace.name.replace(/\s*\(.*?\)\s*/g, '') : '查看所有项目'}
               </span>
               <span className="text-slate-300 font-light select-none">›</span>
               {(() => {
@@ -1057,7 +1086,7 @@ export default function SpaceHubView({
                         )}
                       </div>
                       <div className="self-start justify-self-end">
-                        {renderBlueprintBadge(studio)}
+                        {renderSchemeBadge(studio, true)}
                       </div>
                       <p
                         className="col-span-2 text-[10px] font-mono text-slate-400 truncate leading-none"
@@ -1131,7 +1160,7 @@ export default function SpaceHubView({
                   <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
                     <th className="p-3 pl-4">Studio 描述信息</th>
                     {!(currentSpace?.id === 'my-home' || currentSpace?.id === 'bachelor-pad') && <th className="p-3">逻辑分区 Subdivision</th>}
-                    <th className="p-3">系统蓝图 Blueprint</th>
+                    <th className="p-3">运行方案</th>
                     <th className="p-3">底层运维参数 Technical Specs</th>
                     <th className="p-3">运行状态 System Health</th>
                     {!(currentSpace?.id === 'my-home' || currentSpace?.id === 'bachelor-pad') && <th className="p-3 text-right pr-4">运维重新划分</th>}
@@ -1208,7 +1237,7 @@ export default function SpaceHubView({
                           </td>
                         )}
                         <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                          {renderBlueprintBadge(studio)}
+                          {renderSchemeBadge(studio)}
                         </td>
                         <td className="p-3 font-mono text-[10px] leading-normal">
                           <div className="text-slate-600 flex items-center gap-1">

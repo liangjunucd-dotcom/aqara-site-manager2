@@ -1,20 +1,60 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Aqara Site Manager (Studio Cloud)
 
-# Run and deploy your AI Studio app
+Studio Cloud / Site Manager 交互原型，覆盖账号-空间-权限-成员管理、Studio 运维、项目云存储与 Aqara Builder 设计平台联动。
 
-This contains everything you need to run your app locally.
+## 在线演示
 
-View your app in AI Studio: https://ai.studio/apps/657e5a6e-0188-4754-8274-bb3e20e5f0f6
+| 平台 | 地址 |
+|------|------|
+| **Vercel** | https://aqara-site-manager2.vercel.app |
+| **GitHub Pages** | https://liangjunucd-dotcom.github.io/aqara-site-manager2/ |
 
-## Run Locally
+> GitHub Pages 首次部署后，请在仓库 **Settings → Pages → Build and deployment** 中将 Source 设为 **GitHub Actions**。
 
-**Prerequisites:**  Node.js
+## 本地开发
 
+**前置：** Node.js 20+
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev
+```
+
+可选：在 `.env` 中配置 `GEMINI_API_KEY` 以启用 Builder Lab AI 建议（Vercel Serverless API）。
+
+## 构建
+
+```bash
+# Vercel / 本地预览
+npm run build
+npm run preview
+
+# GitHub Pages（带 base path）
+npm run build:pages
+```
+
+## 部署
+
+### Vercel
+
+```bash
+npx vercel --prod
+```
+
+项目已关联 Vercel，`vercel.json` 配置了 SPA 路由回退与 `/api/*` Serverless 函数。
+
+### GitHub Pages
+
+推送到 `main` 分支后，`.github/workflows/deploy-pages.yml` 自动构建并发布到 GitHub Pages。
+
+## 文档
+
+- [产品需求文档（PRD）](docs/PRD-Site-Manager.md)
+
+## Demo 账号
+
+右下角 **Account Switcher** 可切换演示身份：
+
+- `user-jun` — 完整组织权限
+- `user-yanbin` — 无组织，仅个人工作区
+- `user-installer` — 外部成员（Operator）

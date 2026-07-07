@@ -1,4 +1,4 @@
-import { Site, Device } from './types';
+import { Site, Device, orgAccountId, personalAccountId, ProjectPlan, ProjectAsset, estimateDesignSizeMb } from './types';
 
 // Let's seed devices for all 19 sites so they match the category counts in the UI perfectly
 // Category counts to target: Hubs (17), Cameras (14), Locks (11), Sensors (11), Switches (11)
@@ -346,21 +346,143 @@ export const INITIAL_SITES: Site[] = [
 
 // Initial organization seed
 export const INITIAL_ORGANIZATIONS = [
-  { id: 'personal', name: '个人工作区 (Personal Workspace)' },
-  { id: 'enterprise-a', name: '企业A (星悦集团)' },
-  { id: 'enterprise-b', name: '企业B (民生控股)' }
+  { id: 'personal', name: '个人工作区 (Personal Workspace)', type: 'personal' as const },
+  { id: 'enterprise-a', name: '企业A (星悦集团)', type: 'enterprise' as const, ownerUserId: 'user-jun', createdAt: '2025-05-23 23:49:49', description: '星悦集团，智慧酒店与商用空间物联交付。' },
+  { id: 'enterprise-b', name: '企业B (民生控股)', type: 'enterprise' as const, ownerUserId: 'user-jun', createdAt: '2024-11-08 10:12:30', description: '民生控股，总部办公与全国零售门店智能运维。' }
 ];
 
-// Initial space seed representing homes, hotel projects, office towers, etc.
+// Studio Cloud 全球区域节点 — 不同国家/地区连接到不同的 Studio 云
+export const REGIONS = [
+  { id: 'cn', name: '中国大陆', flag: '🇨🇳', cloudEndpoint: 'cn-hangzhou.studio.aqara.com', latency: '32ms' },
+  { id: 'us', name: '美国 (US West)', flag: '🇺🇸', cloudEndpoint: 'us-west.studio.aqara.com', latency: '186ms' },
+  { id: 'eu', name: '欧洲 (Frankfurt)', flag: '🇪🇺', cloudEndpoint: 'eu-central.studio.aqara.com', latency: '224ms' },
+  { id: 'sg', name: '新加坡 (SEA)', flag: '🇸🇬', cloudEndpoint: 'ap-southeast.studio.aqara.com', latency: '78ms' },
+  { id: 'kr', name: '韩国 (Seoul)', flag: '🇰🇷', cloudEndpoint: 'kr.studio.aqara.com', latency: '61ms' },
+];
+
+// 设计平台 (Aqara Builder) 中已完成的方案 / 已购买插件 — 可应用到 Site Manager Space
+export const DESIGN_PLATFORM_PLANS = [
+  { id: 'dp-1', title: '现代两居别墅方案', updatedAt: '2026-06-30 11:03:58', status: 'In Design', devices: 18, area: '145 m²', kind: 'plan' as const },
+  { id: 'dp-2', title: '高层公寓全屋智控', updatedAt: '2026-06-28 09:41:12', status: 'Completed', devices: 32, area: '210 m²', kind: 'plan' as const },
+  { id: 'dp-3', title: '星悦酒店标准客房模板', updatedAt: '2026-06-25 16:22:05', status: 'Completed', devices: 12, area: '38 m²', kind: 'plan' as const },
+  { id: 'dp-4', title: '零售门店客流大屏插件', updatedAt: '2026-06-20 14:08:33', status: 'Plugin', devices: 6, area: '—', kind: 'plugin' as const },
+  { id: 'dp-5', title: '智慧办公会议室方案', updatedAt: '2026-06-18 10:55:47', status: 'In Design', devices: 21, area: '96 m²', kind: 'plan' as const },
+  { id: 'dp-6', title: '能耗监测分析插件', updatedAt: '2026-06-12 08:30:19', status: 'Plugin', devices: 4, area: '—', kind: 'plugin' as const },
+];
+
+export const INITIAL_ORG_DEPARTMENTS = [
+  // Enterprise A — 星悦集团
+  { id: 'ea-root', name: '星悦集团总部', orgId: 'enterprise-a', parentId: null },
+  { id: 'ea-hotel', name: '酒店事业部', orgId: 'enterprise-a', parentId: 'ea-root' },
+  { id: 'ea-hotel-front', name: '前台运营部', orgId: 'enterprise-a', parentId: 'ea-hotel' },
+  { id: 'ea-hotel-guest', name: '客房服务部', orgId: 'enterprise-a', parentId: 'ea-hotel' },
+  { id: 'ea-tech', name: '技术研发部', orgId: 'enterprise-a', parentId: 'ea-root' },
+  // Enterprise B — 民生控股
+  { id: 'eb-root', name: '民生控股集团', orgId: 'enterprise-b', parentId: null },
+  { id: 'eb-hq', name: '总部管理中心', orgId: 'enterprise-b', parentId: 'eb-root' },
+  { id: 'eb-retail', name: '零售事业部', orgId: 'enterprise-b', parentId: 'eb-root' },
+  { id: 'eb-security', name: '信息安全部', orgId: 'enterprise-b', parentId: 'eb-root' },
+];
+
+export const DEMO_USERS = [
+  { id: 'user-jun', email: 'liangjunucd@gmail.com', displayName: 'Jun (userA)' },
+  { id: 'user-sysadmin', email: 'system-admin@aqara.com', displayName: 'System Admin (userB)' },
+  { id: 'user-installer', email: 'remote.eng@aqara.com', displayName: 'Installer (userC)' },
+  { id: 'user-yanbin', email: 'yanbin@example.com', displayName: '焱彬' },
+  { id: 'user-staff', email: 'staff.a@xingyuehotel.com', displayName: 'Hotel Staff (userD)' },
+];
+
+export const INITIAL_ACCOUNTS = [
+  { accountId: personalAccountId('user-jun'), userId: 'user-jun', orgId: null, accountType: 'personal' as const, memberTag: null },
+  { accountId: personalAccountId('user-installer'), userId: 'user-installer', orgId: null, accountType: 'personal' as const, memberTag: null },
+  { accountId: personalAccountId('user-yanbin'), userId: 'user-yanbin', orgId: null, accountType: 'personal' as const, memberTag: null },
+  { accountId: orgAccountId('user-jun', 'enterprise-a'), userId: 'user-jun', orgId: 'enterprise-a', accountType: 'org_member' as const, memberTag: 'internal' as const },
+  { accountId: orgAccountId('user-jun', 'enterprise-b'), userId: 'user-jun', orgId: 'enterprise-b', accountType: 'org_member' as const, memberTag: 'internal' as const },
+  { accountId: orgAccountId('user-sysadmin', 'enterprise-a'), userId: 'user-sysadmin', orgId: 'enterprise-a', accountType: 'org_member' as const, memberTag: 'internal' as const },
+  { accountId: orgAccountId('user-staff', 'enterprise-a'), userId: 'user-staff', orgId: 'enterprise-a', accountType: 'org_member' as const, memberTag: 'internal' as const },
+  { accountId: orgAccountId('user-installer', 'enterprise-a'), userId: 'user-installer', orgId: 'enterprise-a', accountType: 'org_member' as const, memberTag: 'external' as const },
+];
+
+export const INITIAL_ORG_MEMBERS = [
+  { id: 'ea-m1', orgId: 'enterprise-a', userId: 'user-jun', accountId: orgAccountId('user-jun', 'enterprise-a'), name: 'Jun (userA)', email: 'liangjunucd@gmail.com', memberTag: 'internal' as const, departmentId: 'ea-tech', isOrgAdmin: true, orgRole: 'owner' as const, status: 'Active' as const, lastActiveAt: '今天 23:18', dateAdded: '2026-01-15' },
+  { id: 'ea-m2', orgId: 'enterprise-a', userId: 'user-sysadmin', accountId: orgAccountId('user-sysadmin', 'enterprise-a'), name: 'System Admin (userB)', email: 'system-admin@aqara.com', memberTag: 'internal' as const, departmentId: 'ea-tech', isOrgAdmin: true, orgRole: 'admin' as const, status: 'Active' as const, lastActiveAt: '2026-06-22 13:08', dateAdded: '2026-01-20' },
+  { id: 'ea-m3', orgId: 'enterprise-a', userId: 'user-staff', accountId: orgAccountId('user-staff', 'enterprise-a'), name: 'Hotel Staff (userD)', email: 'staff.a@xingyuehotel.com', memberTag: 'internal' as const, departmentId: 'ea-hotel-front', isOrgAdmin: false, orgRole: 'member' as const, status: 'Active' as const, lastActiveAt: '2026-06-08 00:19', dateAdded: '2026-02-10' },
+  { id: 'ea-m4', orgId: 'enterprise-a', userId: 'user-installer', accountId: orgAccountId('user-installer', 'enterprise-a'), name: 'Installer (userC)', email: 'remote.eng@aqara.com', memberTag: 'external' as const, isOrgAdmin: false, orgRole: 'external' as const, status: 'Active' as const, lastActiveAt: '2026-06-15 09:42', dateAdded: '2026-06-15' },
+  { id: 'eb-m1', orgId: 'enterprise-b', userId: 'user-jun', accountId: orgAccountId('user-jun', 'enterprise-b'), name: 'Jun (userA)', email: 'liangjunucd@gmail.com', memberTag: 'internal' as const, departmentId: 'eb-hq', isOrgAdmin: true, orgRole: 'owner' as const, status: 'Active' as const, lastActiveAt: '今天 21:05', dateAdded: '2026-01-15' },
+];
+
+// Initial space seed — PRD V1.3 personal_space / org_space
 export const INITIAL_SPACES = [
-  { id: 'my-home', name: '我的家 (My Home)', orgId: 'personal', description: '智能家居主控制区，包含一楼客厅和二楼卧室设备', createdAt: '2026-01-10' },
-  { id: 'bachelor-pad', name: '单身公寓 (Bachelor Pad)', orgId: 'personal', description: '高品质独立套房，全屋智控调光与影音娱乐系统', createdAt: '2026-03-15' },
-  
-  { id: 'xingyue-hotel', name: '星悦酒店项目 (Xingyue Hotel Project)', orgId: 'enterprise-a', description: '高奢酒店前台大堂、全客房物联控制及核心后勤网络机房运维', createdAt: '2026-02-01' },
-  { id: 'tech-park', name: '科创研发大楼 (Tech Park R&D Building)', orgId: 'enterprise-a', description: '科创大楼办公设备联动，包含空气质量传感器和多级联动开关', createdAt: '2025-11-20' },
-  
-  { id: 'minsheng-hq', name: '民生总部大楼 (Minsheng HQ Building)', orgId: 'enterprise-b', description: '民生总部核心大楼全方位监控，集成NOC监控中心及高安全级物理锁控', createdAt: '2025-05-12' },
-  { id: 'retail-stores', name: '联营智慧门店 (Co-managed Smart Stores)', orgId: 'enterprise-b', description: '全国主力联营零售店，包括上海、北京、广州门店客流统计与大屏状态展示', createdAt: '2026-04-18' }
+  { id: 'my-home', name: 'Jun的家 (My Home)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '个人私有空间，智能家居主控制区', createdAt: '2026-01-10', storageQuotaGb: 5 },
+  { id: 'bachelor-pad', name: '单身公寓 (Bachelor Pad)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '高品质独立套房全屋智控', createdAt: '2026-03-15', storageQuotaGb: 5 },
+  { id: 'yanbin-home', name: '焱彬的家', ownerAccountId: personalAccountId('user-yanbin'), storageOrgId: null, spaceType: 'personal_space' as const, description: '焱彬的个人私有空间', createdAt: '2026-02-20', storageQuotaGb: 5 },
+  { id: 'installer-home', name: 'Installer 的家', ownerAccountId: personalAccountId('user-installer'), storageOrgId: null, spaceType: 'personal_space' as const, description: 'Installer 个人私有空间', createdAt: '2026-01-05', storageQuotaGb: 5 },
+
+  { id: 'tech-park', name: '崇文大楼 (Chongwen Building)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '企业A商用场地，科创研发大楼物联运维', createdAt: '2025-11-20', storageQuotaGb: 50 },
+  { id: 'xingyue-hotel', name: '星悦酒店项目 (Xingyue Hotel)', ownerAccountId: orgAccountId('user-jun', 'enterprise-a'), storageOrgId: 'enterprise-a', spaceType: 'org_space' as const, description: '高奢酒店全客房物联控制及核心机房运维', createdAt: '2026-02-01', storageQuotaGb: 50 },
+
+  { id: 'minsheng-hq', name: '民生总部大楼 (Minsheng HQ)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '民生总部核心大楼全方位监控', createdAt: '2025-05-12', storageQuotaGb: 50 },
+  { id: 'retail-stores', name: '联营智慧门店 (Smart Stores)', ownerAccountId: orgAccountId('user-jun', 'enterprise-b'), storageOrgId: 'enterprise-b', spaceType: 'org_space' as const, description: '全国主力联营零售店客流统计与大屏展示', createdAt: '2026-04-18', storageQuotaGb: 50 },
+];
+
+/** 项目方案库 — 设计平台导入后可分发到多台 Studio */
+export const INITIAL_PROJECT_PLANS: ProjectPlan[] = [
+  {
+    id: 'pp-hotel-std',
+    spaceId: 'xingyue-hotel',
+    planId: 'dp-3',
+    title: '星悦酒店标准客房模板',
+    kind: 'plan',
+    devices: 12,
+    sizeMb: estimateDesignSizeMb(12),
+    appliedSiteIds: ['warehouse', 'global-hq'],
+    associatedAt: '2026-03-10',
+  },
+  {
+    id: 'pp-hotel-suite',
+    spaceId: 'xingyue-hotel',
+    planId: 'dp-2',
+    title: '行政套房全屋智控',
+    kind: 'plan',
+    devices: 32,
+    sizeMb: estimateDesignSizeMb(32),
+    appliedSiteIds: ['main-office'],
+    associatedAt: '2026-03-18',
+  },
+  {
+    id: 'pp-tech-office',
+    spaceId: 'tech-park',
+    planId: 'dp-5',
+    title: '智慧办公会议室方案',
+    kind: 'plan',
+    devices: 21,
+    sizeMb: estimateDesignSizeMb(21),
+    appliedSiteIds: ['operations-hub'],
+    associatedAt: '2026-04-02',
+  },
+];
+
+/** 项目云存储资源（方案设计 + 日志备份等） */
+export const INITIAL_PROJECT_ASSETS: ProjectAsset[] = [
+  { id: 'asset-hotel-std', spaceId: 'xingyue-hotel', name: '星悦酒店标准客房模板', kind: 'design', sizeMb: estimateDesignSizeMb(12), source: 'builder', projectPlanId: 'pp-hotel-std', createdAt: '2026-03-10' },
+  { id: 'asset-hotel-suite', spaceId: 'xingyue-hotel', name: '行政套房全屋智控', kind: 'design', sizeMb: estimateDesignSizeMb(32), source: 'builder', projectPlanId: 'pp-hotel-suite', createdAt: '2026-03-18' },
+  { id: 'asset-hotel-log-1', spaceId: 'xingyue-hotel', name: 'Studio 运行日志 · 2026-06', kind: 'log-backup', sizeMb: 128, source: 'studio-cloud', createdAt: '2026-07-01' },
+  { id: 'asset-hotel-log-2', spaceId: 'xingyue-hotel', name: '自动化事件快照 · Week 26', kind: 'log-backup', sizeMb: 64, source: 'studio-cloud', createdAt: '2026-06-28' },
+  { id: 'asset-hotel-snap', spaceId: 'xingyue-hotel', name: '机房 Studio 配置快照', kind: 'snapshot', sizeMb: 22, source: 'system', createdAt: '2026-06-15' },
+  { id: 'asset-tech-design', spaceId: 'tech-park', name: '智慧办公会议室方案', kind: 'design', sizeMb: estimateDesignSizeMb(21), source: 'builder', projectPlanId: 'pp-tech-office', createdAt: '2026-04-02' },
+  { id: 'asset-tech-log', spaceId: 'tech-park', name: 'Studio Cloud 审计日志 · Q2', kind: 'log-backup', sizeMb: 96, source: 'studio-cloud', createdAt: '2026-06-30' },
+];
+
+export const INITIAL_SPACE_SHARES = [
+  // personal_space 共享：焱彬的家 → Jun Admin
+  { id: 'ps-1', spaceId: 'yanbin-home', targetAccountId: personalAccountId('user-jun'), role: 'Admin' as const, shareType: 'personal_space' as const, status: 'Active' as const, invitedAt: '2026-03-01' },
+  // org_space 内部共享
+  { id: 'os-1', spaceId: 'tech-park', targetAccountId: orgAccountId('user-sysadmin', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-01-20' },
+  { id: 'os-2', spaceId: 'xingyue-hotel', targetAccountId: orgAccountId('user-sysadmin', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-01-20' },
+  { id: 'os-3', spaceId: 'tech-park', targetAccountId: orgAccountId('user-staff', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-02-10' },
+  { id: 'os-4', spaceId: 'xingyue-hotel', targetAccountId: orgAccountId('user-staff', 'enterprise-a'), role: 'Admin' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-02-10' },
+  // org_space 外部 Installer — 仅崇文大楼 Operator
+  { id: 'os-5', spaceId: 'tech-park', targetAccountId: orgAccountId('user-installer', 'enterprise-a'), role: 'Operator' as const, shareType: 'org_space' as const, status: 'Active' as const, invitedAt: '2026-06-15' },
 ];
 
 // Initial Space Structure nodes for folder tree customization
