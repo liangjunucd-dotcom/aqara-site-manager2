@@ -63,7 +63,7 @@ export default function RegionOpsControl({
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                 <Server size={11} /> 运维区域 · Studio Cloud 节点
               </p>
-              <p className="text-[10px] text-slate-400 mt-0.5">仅展示你有 Studio 的区域；切换后加载该区域的项目数据。</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">切换后加载该区域的项目数据；global 账号可切换全部可用数据中心。</p>
             </div>
             <div className="px-1.5 space-y-0.5 max-h-72 overflow-y-auto">
               {accessibleRegions.map(r => (

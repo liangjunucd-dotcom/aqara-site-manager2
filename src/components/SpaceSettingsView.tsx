@@ -129,9 +129,9 @@ export default function SpaceSettingsView({
     return m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
   });
 
-  // 成员行（活跃 + 待接受）
-  const pendingShares = spaceShares.filter(sh => sh.spaceId === activeSpaceId && sh.status === 'Pending');
+  // 成员行（活跃 + 待接受）— 直接派生自 spaceShares，避免 useMemo 依赖遗漏导致 UI 不刷新
   const memberRows: MemberRow[] = useMemo(() => {
+    const activeAccountIds = new Set(collaborators.map(c => c.account.accountId));
     const rows: MemberRow[] = collaborators.map(c => ({
       key: `active-${c.account.accountId}`,
       name: c.user.displayName,
@@ -141,20 +141,23 @@ export default function SpaceSettingsView({
       status: c.memberTag === 'owner' ? 'Owner' : 'Added',
       shareId: c.share?.id,
     }));
-    pendingShares.forEach(sh => {
-      const u = resolveShareUser(sh.targetAccountId);
-      rows.push({
-        key: `pending-${sh.id}`,
-        name: u?.displayName ?? sh.targetAccountId,
-        email: u?.email ?? '',
-        role: sh.role,
-        roleLabel: sh.roleLabel,
-        status: 'Pending',
-        shareId: sh.id,
+    spaceShares
+      .filter(sh => sh.spaceId === activeSpaceId && sh.status === 'Pending')
+      .forEach(sh => {
+        if (activeAccountIds.has(sh.targetAccountId)) return;
+        const u = resolveShareUser(sh.targetAccountId);
+        rows.push({
+          key: `pending-${sh.id}`,
+          name: u?.displayName ?? sh.targetAccountId,
+          email: u?.email ?? '',
+          role: sh.role,
+          roleLabel: sh.roleLabel,
+          status: 'Pending',
+          shareId: sh.id,
+        });
       });
-    });
     return rows;
-  }, [collaborators, pendingShares]);
+  }, [collaborators, spaceShares, activeSpaceId, accounts, users]);
 
   const inviteLink = useMemo(
     () => `https://builder.aqara.com/invite/${activeSpaceId}?token=${activeSpaceId.slice(0, 6)}9f2ac1`,
@@ -246,7 +249,10 @@ export default function SpaceSettingsView({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 min-h-[500px]">
+    <div className="space-y-4">
+      <h2 className="text-xl font-extrabold text-slate-900">项目设置</h2>
+
+      <div className="flex flex-col lg:flex-row gap-6 min-h-[500px]">
       {/* 左侧子菜单 */}
       <div className="w-full lg:w-52 shrink-0 bg-white border border-slate-200/80 rounded-xl p-3 space-y-1 select-none h-fit">
         <div className="px-3 py-2 border-b border-slate-50 mb-2">
@@ -676,6 +682,7 @@ export default function SpaceSettingsView({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

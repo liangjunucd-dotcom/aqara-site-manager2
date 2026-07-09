@@ -130,6 +130,29 @@ export function invitePersonalSpace(params: {
   return { users, spaceShares };
 }
 
+/** personal_space 受邀人接受邀请后，确保存在 personal Account 记录 */
+export function ensurePersonalAccountForShare(
+  share: SpaceShare,
+  users: User[],
+  accounts: Account[],
+): Account[] {
+  if (share.shareType !== 'personal_space' || accounts.some(a => a.accountId === share.targetAccountId)) {
+    return accounts;
+  }
+  const user = users.find(u => u.id === share.targetAccountId);
+  if (!user) return accounts;
+  return [
+    ...accounts,
+    {
+      accountId: share.targetAccountId,
+      userId: user.id,
+      orgId: null,
+      accountType: 'personal',
+      memberTag: null,
+    },
+  ];
+}
+
 /** 将已存在的组织成员（accountId）批量加入某个 org_space 项目 */
 export function addOrgMembersToProject(params: {
   space: Space;

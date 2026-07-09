@@ -3,6 +3,7 @@ import {
   INITIAL_SITES, INITIAL_ORGANIZATIONS, INITIAL_SPACES, INITIAL_SPACE_STRUCTURE_NODES,
   INITIAL_ORG_DEPARTMENTS, INITIAL_ORG_MEMBERS, DEMO_USERS, INITIAL_ACCOUNTS, INITIAL_SPACE_SHARES,
   REGIONS, DESIGN_PLATFORM_PLANS, INITIAL_PROJECT_PLANS, INITIAL_PROJECT_ASSETS,
+  getEligibleProjectCountries, countryToRegionId,
 } from './mockData';
 import {
   Site, Device, Space, SpaceStructureNode, OrgDepartment, OrgMember, Organization, OrgRole,
@@ -11,11 +12,16 @@ import {
 } from './types';
 import {
   getAccessibleOrgs, getVisibleSpaces, getSpacePermissions, isExternalMember, getSpaceCollaborators,
-  getSpaceRegionId, getAccessibleOpsRegionIds, getEligibleDataCenterRegionIds,
+  getSpaceRegionId, getEligibleDataCenterRegionIds, getSwitchableOpsRegionIds,
 } from './utils/accountContext';
 import {
+  buildSiteManagerUrl,
+  persistActiveWorkspaceId,
+  resolveInitialWorkspaceId,
+} from './utils/workspaceContext';
+import {
   inviteOrgSpaceExternal, invitePersonalSpace, removeOrgMember, removeSpaceShare, addInternalOrgMember,
-  addOrgMembersToProject,
+  addOrgMembersToProject, ensurePersonalAccountForShare,
 } from './utils/spaceActions';
 import SpaceHubView from './components/SpaceHubView';
 import SiteDetails from './components/SiteDetails';
@@ -34,15 +40,19 @@ import RegionOpsControl from './components/RegionOpsControl';
 import PersonalSettingsView from './components/PersonalSettingsView';
 import DesignPlatformView, { DesignPlan, UiThemeAsset } from './components/DesignPlatformView';
 import EnterOrgModal from './components/EnterOrgModal';
+import WorkspacePickerModal from './components/WorkspacePickerModal';
 import ProjectStoragePanel from './components/ProjectStoragePanel';
+import SiteManagerSidebar from './components/SiteManagerSidebar';
+import WorkspaceHomeView from './components/WorkspaceHomeView';
+import {
+  workspaceAvatarClass,
+  workspaceInitial,
+} from './components/WorkspaceSwitcher';
 import { 
-  Building2, Layers, LineChart, Settings, Sliders, Bell, 
-  Search, ShieldCheck, Cpu, Database, Compass, Smartphone, 
-  Video, HelpCircle, CheckCircle2, AlertTriangle, ExternalLink,
-  ArrowRight, Folder, LayoutGrid, Home, Plus, ChevronDown, Check, FolderPlus, ArrowLeft,
-  UserCircle, LogOut, ChevronRight, Send, Puzzle,
-  PieChart, RefreshCw,
+  LayoutGrid, UserCircle, LogOut, Send, Puzzle, ChevronRight, Building2,
 } from 'lucide-react';
+
+type AppView = 'workspace-home' | 'projects' | 'org-admin' | 'personal-settings';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
@@ -57,15 +67,14 @@ export default function App() {
 
   const [activeOrgId, setActiveOrgId] = useState<string>('personal');
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
-  const [appView, setAppView] = useState<'projects' | 'org-admin' | 'personal-settings'>('projects');
+  const [appView, setAppView] = useState<AppView>('projects');
   const [currentUserId, setCurrentUserId] = useState('user-jun');
 
   // Which platform is currently active: Site Manager (运维) vs Lab AI (创作)
-  const [activePlatform, setActivePlatform] = useState<'site-manager' | 'lab-ai'>('site-manager');
-  const [isAppSwitcherOpen, setIsAppSwitcherOpen] = useState(false);
+  const [activePlatform, setActivePlatform] = useState<'site-manager' | 'lab-ai'>('lab-ai');
 
   // 运维区域（当前 Studio Cloud 数据源节点）—— 区别于账号归属地 homeRegionId
-  const [activeOpsRegionId, setActiveOpsRegionId] = useState<string>('cn');
+  const [activeOpsRegionId, setActiveOpsRegionId] = useState<string>('us');
   const [opsRegionNote, setOpsRegionNote] = useState<string | null>(null);
 
   // Lab AI 创作物应用到 Site Manager Space 的流程
@@ -81,15 +90,14 @@ export default function App() {
 
   // Header and Sidebar Dropdowns
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
-  const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
+  const [isWorkspacePickerModalOpen, setIsWorkspacePickerModalOpen] = useState(false);
   const [isEnterOrgModalOpen, setIsEnterOrgModalOpen] = useState(false);
-  const [isSidebarSpaceDropdownOpen, setIsSidebarSpaceDropdownOpen] = useState(false);
 
   // New Space creation state inside Spaces Index Page
   const [isNewSpaceModalOpen, setIsNewSpaceModalOpen] = useState(false);
   const [newSpaceName, setNewSpaceName] = useState('');
   const [newSpaceDesc, setNewSpaceDesc] = useState('');
-  const [newSpaceRegionId, setNewSpaceRegionId] = useState('cn');
+  const [newSpaceCountryId, setNewSpaceCountryId] = useState('cn');
 
   // Search inside Spaces Index Page
   const [searchSpaceQuery, setSearchSpaceQuery] = useState('');
@@ -171,15 +179,56 @@ export default function App() {
 
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
 
-  // Switch Organization
+  // Read ?platform= from URL on load; restore shared workspace context
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const platform = params.get('platform');
+    const accessibleIds = getAccessibleOrgs(currentUserId, organizations, orgMembers).map(o => o.id);
+    const workspaceId = resolveInitialWorkspaceId(accessibleIds);
+
+    if (platform === 'site-manager') {
+      setActivePlatform('site-manager');
+      setActiveOrgId(workspaceId);
+      setActiveSpaceId(null);
+      setAppView('projects');
+    } else if (platform === 'lab-ai') {
+      setActivePlatform('lab-ai');
+      setActiveOrgId(workspaceId);
+    } else {
+      setActivePlatform('lab-ai');
+      setActiveOrgId(workspaceId);
+    }
+  }, []);
+
+  // Switch Organization（不强制切平台，Lab 内切换工作区仍留在 Lab）
   const handleOrgChange = (orgId: string) => {
     setActiveOrgId(orgId);
     setActiveSpaceId(null);
     setAppView('projects');
-    setActivePlatform('site-manager');
+    persistActiveWorkspaceId(orgId);
     setIsProfileDropdownOpen(false);
+    setIsWorkspacePickerModalOpen(false);
     setIsEnterOrgModalOpen(false);
-    setIsWorkspaceSwitcherOpen(false);
+  };
+
+  const handleSelectWorkspaceFromHome = (orgId: string) => {
+    handleOrgChange(orgId);
+  };
+
+  const openWorkspacePickerModal = () => {
+    setIsProfileDropdownOpen(false);
+    setIsWorkspacePickerModalOpen(true);
+  };
+
+  const handleSelectWorkspaceFromModal = (orgId: string) => {
+    handleOrgChange(orgId);
+    setIsWorkspacePickerModalOpen(false);
+  };
+
+  const openSiteManagerInNewTab = () => {
+    persistActiveWorkspaceId(activeOrgId);
+    window.open(buildSiteManagerUrl(activeOrgId), '_blank');
+    setIsProfileDropdownOpen(false);
   };
 
   const openOrgAdmin = (orgId?: string) => {
@@ -278,8 +327,8 @@ export default function App() {
       storageOrgId: isPersonal ? null : applyTargetOrgId,
       spaceType: isPersonal ? 'personal_space' : 'org_space',
       description: applyPlan
-        ? `由 Lab AI 方案「${applyPlan.title}」创建`
-        : `由 Lab AI 界面配置「${applyUi!.title}」创建`,
+        ? `由 Lab 方案「${applyPlan.title}」创建`
+        : `由 Lab 界面配置「${applyUi!.title}」创建`,
       createdAt: new Date().toISOString().split('T')[0],
     };
     setSpaces(prev => [...prev, newSpaceObj]);
@@ -333,6 +382,7 @@ export default function App() {
     setApplyPlan(null);
     setActivePlatform('site-manager');
     setActiveOrgId(applyTargetOrgId);
+    persistActiveWorkspaceId(applyTargetOrgId);
     setActiveSpaceId(targetSpaceId);
     setAppView('projects');
     setActiveTab('storage');
@@ -361,6 +411,7 @@ export default function App() {
     setApplyUi(null);
     setActivePlatform('site-manager');
     setActiveOrgId(applyTargetOrgId);
+    persistActiveWorkspaceId(applyTargetOrgId);
     setActiveSpaceId(targetSpaceId);
     setAppView('projects');
     setActiveTab('storage');
@@ -372,10 +423,8 @@ export default function App() {
     setActiveSpaceId(spaceId);
     setActiveTab('sites');
     setActiveSiteId(null);
-    setIsSidebarSpaceDropdownOpen(false);
   };
 
-  // Create a New Space
   const handleCreateSpace = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpaceName.trim()) return;
@@ -390,7 +439,7 @@ export default function App() {
       spaceType: isPersonal ? 'personal_space' : 'org_space',
       description: newSpaceDesc || '',
       createdAt: new Date().toISOString().split('T')[0],
-      regionId: newSpaceRegionId,
+      regionId: countryToRegionId(newSpaceCountryId),
     };
     setSpaces([...spaces, newSpaceObj]);
     setNewSpaceName('');
@@ -465,19 +514,25 @@ export default function App() {
   const isExternal = isEnterpriseOrg(activeOrgId) && isExternalMember(currentUserId, activeOrgId, orgMembers);
   const visibleSpaces = getVisibleSpaces(currentUserId, activeOrgId, spaces, spaceShares);
 
-  // 当前账号上下文可运维的区域集合（= 可见项目分布到的区域）
-  const accessibleOpsRegionIds = getAccessibleOpsRegionIds(visibleSpaces, accounts, users);
-  // 归一化：确保当前运维区域始终落在可访问集合内；优先账号归属地，否则第一个可访问区域
+  // 顶栏可切换的运维区域 = 云组允许的数据中心 ∪ 已有项目所在区域
+  const switchableOpsRegionIds = getSwitchableOpsRegionIds(
+    currentUser.homeRegionId,
+    REGIONS,
+    visibleSpaces,
+    accounts,
+    users,
+  );
+  // 归一化：确保当前运维区域始终落在可切换集合内；优先账号归属地，否则第一个可访问区域
   useEffect(() => {
-    if (accessibleOpsRegionIds.length === 0) return;
-    if (!accessibleOpsRegionIds.includes(activeOpsRegionId)) {
+    if (switchableOpsRegionIds.length === 0) return;
+    if (!switchableOpsRegionIds.includes(activeOpsRegionId)) {
       setActiveOpsRegionId(
-        accessibleOpsRegionIds.includes(currentUser.homeRegionId)
+        switchableOpsRegionIds.includes(currentUser.homeRegionId)
           ? currentUser.homeRegionId
-          : accessibleOpsRegionIds[0],
+          : switchableOpsRegionIds[0],
       );
     }
-  }, [accessibleOpsRegionIds, activeOpsRegionId, currentUser.homeRegionId]);
+  }, [switchableOpsRegionIds, activeOpsRegionId, currentUser.homeRegionId]);
 
   // Site Manager 项目浏览：按当前运维区域过滤可见项目/Studio
   const regionVisibleSpaces = visibleSpaces.filter(
@@ -495,20 +550,33 @@ export default function App() {
 
   // 当前账号可创建项目的数据中心（由注册国家/地区云组决定）
   const eligibleDcRegionIds = getEligibleDataCenterRegionIds(currentUser.homeRegionId, REGIONS);
-  const eligibleDcRegions = eligibleDcRegionIds
-    .map(id => REGIONS.find(r => r.id === id))
-    .filter((r): r is (typeof REGIONS)[number] => Boolean(r));
+  const eligibleProjectCountries = getEligibleProjectCountries(currentUser.homeRegionId, REGIONS);
 
-  useEffect(() => {
-    if (!isNewSpaceModalOpen) return;
-    const eligible = getEligibleDataCenterRegionIds(currentUser.homeRegionId, REGIONS);
-    const defaultId = eligible.includes(activeOpsRegionId)
+  const resolveDefaultProjectCountryId = () => {
+    const defaultRegionId = eligibleDcRegionIds.includes(activeOpsRegionId)
       ? activeOpsRegionId
-      : eligible.includes(currentUser.homeRegionId)
+      : eligibleDcRegionIds.includes(currentUser.homeRegionId)
         ? currentUser.homeRegionId
-        : eligible[0] ?? 'cn';
-    setNewSpaceRegionId(defaultId);
-  }, [isNewSpaceModalOpen, currentUser.homeRegionId, activeOpsRegionId]);
+        : eligibleDcRegionIds[0] ?? 'cn';
+    const defaultCountry =
+      eligibleProjectCountries.find(c => c.regionId === defaultRegionId) ??
+      eligibleProjectCountries[0];
+    return defaultCountry?.id ?? 'cn';
+  };
+
+  const openNewSpaceModal = () => {
+    setNewSpaceCountryId(resolveDefaultProjectCountryId());
+    setIsNewSpaceModalOpen(true);
+  };
+
+  const selectedProjectCountryId = eligibleProjectCountries.some(c => c.id === newSpaceCountryId)
+    ? newSpaceCountryId
+    : resolveDefaultProjectCountryId();
+
+  const selectedProjectCountry = eligibleProjectCountries.find(c => c.id === selectedProjectCountryId);
+  const selectedProjectDc = selectedProjectCountry
+    ? REGIONS.find(r => r.id === selectedProjectCountry.regionId)
+    : undefined;
 
   const spacePermissions = activeSpaceId
     ? getSpacePermissions(currentUserId, activeOrgId, activeSpaceId, spaces, spaceShares)
@@ -527,29 +595,29 @@ export default function App() {
     setProjectAssets(prev => prev.map(a => (a.id === assetId ? { ...a, assignedMemberAccountIds: accountIds } : a)));
   };
 
-  // 立即备份：在 Studio Cloud 侧将项目下 Studio 的本地配置与运行数据打包，写入项目云存储
-  // studioId 为空表示聚合备份项目下全部 Studio；指定则仅备份单台 Studio
+  // 立即备份：在 Studio Cloud 侧将 Studio 的本地配置与运行数据打包，写入项目云存储
+  // studioId 为空 = 为项目下每台 Studio 各生成一份独立备份；指定则仅备份单台
   const handleCreateBackup = (spaceId: string, studioId?: string) => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const hash = Math.random().toString(16).slice(2, 8);
-    const studioCount = sites.filter(s => s.spaceId === spaceId).length;
-    const coveredStudios = studioId ? 1 : studioCount;
-    setProjectAssets(prev => [
-      ...prev,
-      {
-        id: `asset-backup-${Date.now()}`,
-        spaceId,
-        name: `Backup-${hash}.zip`,
-        kind: 'data-backup',
-        sizeMb: Math.max(18, coveredStudios * 32 + Math.round(Math.random() * 24)),
-        source: 'studio-cloud',
-        backupType: 'manual',
-        studioId,
-        createdAt: stamp,
-      },
-    ]);
+    const targets = studioId
+      ? [studioId]
+      : sites.filter(s => s.spaceId === spaceId).map(s => s.id);
+    if (targets.length === 0) return;
+
+    const newAssets: ProjectAsset[] = targets.map((sid, idx) => ({
+      id: `asset-backup-${Date.now()}-${idx}`,
+      spaceId,
+      name: `Backup-${Math.random().toString(16).slice(2, 8)}.zip`,
+      kind: 'data-backup',
+      sizeMb: Math.max(18, 32 + Math.round(Math.random() * 24)),
+      source: 'studio-cloud',
+      backupType: 'manual',
+      studioId: sid,
+      createdAt: stamp,
+    }));
+    setProjectAssets(prev => [...prev, ...newAssets]);
   };
 
   const handleDeleteAsset = (assetId: string) => {
@@ -648,7 +716,12 @@ export default function App() {
 
   // personal_space：模拟受邀人接受邀请（Pending → Active/已加入）
   const handleAcceptShare = (shareId: string) => {
-    setSpaceShares(spaceShares.map(sh => (sh.id === shareId ? { ...sh, status: 'Active' } : sh)));
+    const share = spaceShares.find(sh => sh.id === shareId);
+    if (!share || share.status !== 'Pending') return;
+    setSpaceShares(prev =>
+      prev.map(sh => (sh.id === shareId ? { ...sh, status: 'Active' as const } : sh)),
+    );
+    setAccounts(prev => ensurePersonalAccountForShare(share, users, prev));
   };
 
   // 项目自定义角色
@@ -673,11 +746,41 @@ export default function App() {
   const currentOrg = organizations.find(o => o.id === activeOrgId);
   const currentSpace = spaces.find(s => s.id === activeSpaceId);
 
-  const activeProductLabel = activePlatform === 'site-manager' ? 'Site Manager' : 'Lab AI';
   const currentWorkspaceName = isPersonalOrg(activeOrgId)
     ? 'Personal Workspace'
     : (currentOrg?.name ?? '工作区');
   const workspaceOptions = accessibleOrgs;
+
+  const workspaceSwitcherProps = {
+    activeOrgId,
+    workspaceOptions,
+    currentWorkspaceName,
+    userDisplayName: currentUser.displayName,
+    adminOrgs,
+    onOrgChange: handleOrgChange,
+    onEnterOrgModal: openEnterOrgModal,
+    onCreateOrg: () => alert('创建工作区流程（演示）'),
+  };
+
+  const siteManagerSidebar = activeSpaceId ? (
+    <SiteManagerSidebar
+      mode="project"
+      currentSpace={currentSpace}
+      activeSpaceId={activeSpaceId}
+      projectOptions={regionVisibleSpaces}
+      activeTab={activeTab}
+      isExternal={isExternal}
+      onTabChange={setActiveTab}
+      onClearActiveSite={() => setActiveSiteId(null)}
+      onSpaceChange={handleSpaceChange}
+      onCreateProject={isExternal ? undefined : openNewSpaceModal}
+    />
+  ) : null;
+
+  const activeWorkspaceOrg = workspaceOptions.find(o => o.id === activeOrgId);
+  const closeProfileDropdown = () => {
+    setIsProfileDropdownOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex flex-col text-slate-800 antialiased selection:bg-slate-900 selection:text-white font-sans">
@@ -685,56 +788,42 @@ export default function App() {
       {/* ==================== 1. TOP NAVBAR (WITH ORG dropdown in profile avatar) ==================== */}
       <header className="h-[48px] bg-white border-b border-slate-100 px-5 flex items-center justify-between z-40 flex-shrink-0 select-none">
         <div className="flex items-center gap-0 min-w-0">
-          {/* 品牌区：固定展示 Aqara Builder（参考云效顶栏） */}
-          <div className="flex items-center gap-2 pr-4 border-r border-slate-200 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-sm">
-              A
+          {/* 品牌区：Lab 显示 Aqara Builder，Site Manager 显示 Site Manager */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs shadow-sm ${
+              activePlatform === 'site-manager'
+                ? 'bg-gradient-to-br from-emerald-600 to-teal-700'
+                : 'bg-gradient-to-br from-blue-600 to-indigo-600'
+            }`}>
+              {activePlatform === 'site-manager' ? 'S' : 'A'}
             </div>
             <div className="hidden sm:flex items-baseline gap-1">
-              <span className="text-[15px] font-black text-slate-900 tracking-tight">Aqara</span>
-              <span className="text-[15px] font-semibold text-slate-600 tracking-tight">Builder</span>
+              {activePlatform === 'site-manager' ? (
+                <>
+                  <span className="text-[15px] font-black text-slate-900 tracking-tight">Site</span>
+                  <span className="text-[15px] font-semibold text-slate-600 tracking-tight">Manager</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[15px] font-black text-slate-900 tracking-tight">Aqara</span>
+                  <span className="text-[15px] font-semibold text-slate-600 tracking-tight">Builder</span>
+                </>
+              )}
             </div>
-          </div>
-
-          {/* 产品切换器：仅当前产品名 + ▼，无独立 Logo */}
-          <div className="relative pl-4">
-            <button
-              onClick={() => setIsAppSwitcherOpen(!isAppSwitcherOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200/80 transition-colors cursor-pointer"
-              title="切换产品"
-            >
-              <LayoutGrid size={14} className="text-slate-500 shrink-0" />
-              <span className="text-[13px] font-semibold text-slate-800">{activeProductLabel}</span>
-              <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isAppSwitcherOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isAppSwitcherOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsAppSwitcherOpen(false)} />
-                <div className="absolute left-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <button
-                    onClick={() => { setActivePlatform('site-manager'); setActiveSpaceId(null); setAppView('projects'); setIsAppSwitcherOpen(false); }}
-                    className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between cursor-pointer ${activePlatform === 'site-manager' ? 'text-slate-900 font-bold bg-slate-50' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span>Site Manager</span>
-                    {activePlatform === 'site-manager' && <Check size={14} className="text-emerald-500" />}
-                  </button>
-                  <button
-                    onClick={() => { setActivePlatform('lab-ai'); setIsAppSwitcherOpen(false); }}
-                    className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between cursor-pointer ${activePlatform === 'lab-ai' ? 'text-slate-900 font-bold bg-slate-50' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span>Lab AI</span>
-                    {activePlatform === 'lab-ai' && <Check size={14} className="text-emerald-500" />}
-                  </button>
-                </div>
-              </>
-            )}
           </div>
 
           {activePlatform === 'site-manager' && currentSpace && (
-            <span className="hidden md:flex items-center gap-1.5 ml-3 text-[12px] text-slate-400 min-w-0">
-              <span className="text-slate-300">/</span>
-              <span className="truncate max-w-[180px] font-medium">{currentSpace.name}</span>
-            </span>
+            <div className="ml-4 pl-4 border-l border-slate-200 hidden sm:flex items-center min-w-0 text-[12px]">
+              <span className="truncate max-w-[220px] font-medium text-slate-500">
+                / {currentSpace.name}
+              </span>
+            </div>
+          )}
+
+          {activePlatform === 'lab-ai' && (
+            <div className="ml-4 pl-4 border-l border-slate-200 hidden sm:flex items-center text-[12px]">
+              <span className="font-semibold text-slate-400">Lab</span>
+            </div>
           )}
         </div>
 
@@ -745,7 +834,7 @@ export default function App() {
           {showRegionSwitcher && (
             <RegionOpsControl
               regions={REGIONS}
-              accessibleRegionIds={accessibleOpsRegionIds}
+              accessibleRegionIds={switchableOpsRegionIds}
               activeOpsRegionId={activeOpsRegionId}
               homeRegionId={currentUser.homeRegionId}
               onSwitch={handleSwitchOpsRegion}
@@ -766,7 +855,10 @@ export default function App() {
           <div className="relative">
             <button
               id="profile-dropdown-btn"
-              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+              onClick={() => {
+                if (isProfileDropdownOpen) closeProfileDropdown();
+                else setIsProfileDropdownOpen(true);
+              }}
               className="w-6 h-6 rounded-full bg-slate-900 border border-slate-200 flex items-center justify-center overflow-hidden cursor-pointer shadow-xs hover:ring-2 hover:ring-slate-200 transition-all"
             >
               <span className="text-[9px] font-black text-white uppercase">A</span>
@@ -774,19 +866,18 @@ export default function App() {
 
             {isProfileDropdownOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => { setIsProfileDropdownOpen(false); setIsWorkspaceSwitcherOpen(false); }} />
-                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200/80 rounded-xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {/* 用户信息头部 */}
-                  <div className="px-4 pt-2 pb-3 flex flex-col items-center border-b border-slate-50">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-lg font-black mb-2">
+                <div className="fixed inset-0 z-40" onClick={closeProfileDropdown} />
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200/80 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                  {/* 浅蓝头部 + 头像 */}
+                  <div className="px-4 pt-5 pb-4 flex flex-col items-center bg-gradient-to-b from-sky-50 to-blue-50/40">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center text-white text-lg font-black mb-2 shadow-sm">
                       {currentUser.displayName.charAt(0).toUpperCase()}
                     </div>
                     <p className="text-sm font-bold text-slate-800 truncate max-w-full">{currentUser.displayName}</p>
-                    <p className="text-[11px] text-slate-400 truncate max-w-full">{currentUser.email}</p>
                   </div>
 
                   {/* 个人设置 / 退出登录 */}
-                  <div className="px-2 py-2 border-b border-slate-50">
+                  <div className="px-2 py-2">
                     <button
                       onClick={openPersonalSettings}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
@@ -794,62 +885,64 @@ export default function App() {
                       <UserCircle size={15} className="text-slate-400" /> 个人设置
                     </button>
                     <button
-                      onClick={() => { alert("Logging out of Site Manager SaaS..."); setIsProfileDropdownOpen(false); }}
+                      onClick={() => { alert("Logging out of Site Manager SaaS..."); closeProfileDropdown(); }}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
                     >
                       <LogOut size={15} className="text-slate-400" /> 退出登录
                     </button>
                   </div>
 
-                  {/* 工作区：仅展示当前工作区，点击切换展开列表 */}
-                  <div className="px-2 py-2">
-                    <p className="px-2 py-1 text-[10px] font-bold text-slate-400">工作区</p>
-                    <div className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-black shrink-0 ${
-                        isPersonalOrg(activeOrgId)
-                          ? 'bg-gradient-to-br from-slate-500 to-slate-700'
-                          : 'bg-gradient-to-br from-indigo-400 to-purple-500'
-                      }`}>
-                        {isPersonalOrg(activeOrgId) ? currentUser.displayName.charAt(0).toUpperCase() : currentWorkspaceName.charAt(0)}
+                  {/* 从 Lab 打开 Site Manager（新标签页） */}
+                  {activePlatform === 'lab-ai' && (
+                    <>
+                      <div className="h-px bg-slate-100 mx-3" />
+                      <div className="px-2 py-2">
+                        <button
+                          onClick={openSiteManagerInNewTab}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                        >
+                          <LayoutGrid size={15} className="text-slate-400" /> Site Manager
+                        </button>
                       </div>
-                      <span className="flex-1 text-xs font-bold text-slate-800 truncate">{currentWorkspaceName}</span>
-                      <button
-                        onClick={() => setIsWorkspaceSwitcherOpen(!isWorkspaceSwitcherOpen)}
-                        className="text-[11px] font-bold text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer shrink-0"
-                      >
-                        切换 <ChevronRight size={12} className={`transition-transform ${isWorkspaceSwitcherOpen ? 'rotate-90' : ''}`} />
-                      </button>
-                    </div>
+                    </>
+                  )}
 
-                    {isWorkspaceSwitcherOpen && (
-                      <div className="mt-1 mx-0.5 border border-slate-100 rounded-lg overflow-hidden bg-white shadow-sm">
-                        {workspaceOptions.map(org => (
+                  {/* Site Manager：组织区块 */}
+                  {activePlatform === 'site-manager' && (
+                    <>
+                      <div className="h-px bg-slate-100 mx-3" />
+                      <div className="px-3 py-2.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-2">组织</p>
+                        <div className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-black shrink-0 ${workspaceAvatarClass(activeOrgId)}`}>
+                            {activeWorkspaceOrg
+                              ? workspaceInitial(activeWorkspaceOrg, currentUser.displayName, currentWorkspaceName)
+                              : currentUser.displayName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-slate-800 truncate">{currentWorkspaceName}</p>
+                          </div>
                           <button
-                            key={org.id}
-                            onClick={() => handleOrgChange(org.id)}
-                            className={`w-full px-3 py-2.5 text-left text-xs font-bold flex items-center justify-between cursor-pointer border-b border-slate-50 last:border-0 ${
-                              activeOrgId === org.id ? 'bg-slate-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                            }`}
+                            onClick={openWorkspacePickerModal}
+                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 cursor-pointer shrink-0"
                           >
-                            <span className="truncate">
-                              {isPersonalOrg(org.id) ? 'Personal Workspace' : org.name}
-                            </span>
-                            {activeOrgId === org.id && <Check size={12} className="text-emerald-500 shrink-0" />}
+                            切换
+                            <ChevronRight size={12} />
                           </button>
-                        ))}
+                        </div>
+                        {adminOrgs.length > 0 && (
+                          <button
+                            onClick={openEnterOrgModal}
+                            className="w-full mt-2 px-2.5 py-2 rounded-lg text-left text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Building2 size={14} className="text-slate-400 shrink-0" />
+                            <span>管理后台</span>
+                            <ChevronRight size={12} className="ml-auto text-slate-300" />
+                          </button>
+                        )}
                       </div>
-                    )}
-
-                    {adminOrgs.length > 0 && (
-                      <button
-                        onClick={() => { setIsProfileDropdownOpen(false); openEnterOrgModal(); }}
-                        className="mt-1.5 w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <Building2 size={14} className="text-slate-400" /> 组织管理后台
-                        <ChevronRight size={12} className="ml-auto" />
-                      </button>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -860,328 +953,79 @@ export default function App() {
 
       {/* ==================== 2. PLATFORM / VIEW ROUTER ==================== */}
       {activePlatform === 'lab-ai' ? (
-        <DesignPlatformView plans={DESIGN_PLATFORM_PLANS} onApply={openApplyPlan} onApplyUi={openApplyUi} />
+        <DesignPlatformView
+          plans={DESIGN_PLATFORM_PLANS}
+          onApply={openApplyPlan}
+          onApplyUi={openApplyUi}
+          workspace={workspaceSwitcherProps}
+        />
+      ) : appView === 'workspace-home' ? (
+        <WorkspaceHomeView
+          workspaceOptions={accessibleOrgs}
+          userDisplayName={currentUser.displayName}
+          onSelectWorkspace={handleSelectWorkspaceFromHome}
+          onCreateWorkspace={() => alert('创建工作区流程（演示）')}
+        />
       ) : appView === 'personal-settings' ? (
         <PersonalSettingsView
           user={currentUser}
           joinedOrgs={joinedOrgs}
           activeOrgId={activeOrgId}
           regions={REGIONS}
-          onBack={() => { setAppView('projects'); setActiveOrgId('personal'); }}
+          onBack={() => { setAppView('projects'); setActiveSpaceId(null); }}
           onExitOrg={handleExitOrg}
           onEnterAdmin={(orgId) => openOrgAdmin(orgId)}
           onChangeRegion={handleChangeRegion}
         />
       ) : activeSpaceId === null && appView === 'org-admin' && isEnterpriseOrg(activeOrgId) && !isExternal && currentOrg ? (
-        <OrgAdminView
-          organization={currentOrg}
-          departments={orgDepartments}
-          onUpdateDepartments={setOrgDepartments}
-          orgMembers={orgMembers}
-          users={users}
-          onAddInternalMember={handleAddInternalMember}
-          onRemoveOrgMember={handleRemoveOrgMember}
-          onChangeMemberRole={handleChangeMemberRole}
-          onTransferOwner={handleTransferOwner}
-          onDeleteOrg={handleDeleteOrg}
-          spaces={spaces}
-          onBack={() => setAppView('projects')}
-        />
+        <div className="flex-1 flex flex-col min-h-0">
+          <OrgAdminView
+            organization={currentOrg}
+            departments={orgDepartments}
+            onUpdateDepartments={setOrgDepartments}
+            orgMembers={orgMembers}
+            users={users}
+            onAddInternalMember={handleAddInternalMember}
+            onRemoveOrgMember={handleRemoveOrgMember}
+            onChangeMemberRole={handleChangeMemberRole}
+            onTransferOwner={handleTransferOwner}
+            onDeleteOrg={handleDeleteOrg}
+            spaces={spaces}
+            onBack={() => setAppView('projects')}
+          />
+        </div>
       ) : activeSpaceId === null && isPersonalOrg(activeOrgId) ? (
-        <PersonalProjectIndex
-          visibleSpaces={regionVisibleSpaces}
-          searchQuery={searchSpaceQuery}
-          onSearchChange={setSearchSpaceQuery}
-          onSelectSpace={handleSpaceChange}
-          onCreateProject={() => setIsNewSpaceModalOpen(true)}
-          getStudioCount={getStudioCount}
-          getOwnerLabel={getOwnerLabel}
-          userDisplayName={currentUser.displayName}
-        />
+        <div className="flex-1 flex flex-col min-h-0">
+          <PersonalProjectIndex
+            visibleSpaces={regionVisibleSpaces}
+            searchQuery={searchSpaceQuery}
+            onSearchChange={setSearchSpaceQuery}
+            onSelectSpace={handleSpaceChange}
+            onCreateProject={openNewSpaceModal}
+            getStudioCount={getStudioCount}
+            getOwnerLabel={getOwnerLabel}
+            userDisplayName={currentUser.displayName}
+          />
+        </div>
       ) : activeSpaceId === null && currentOrg ? (
-        <OrgProjectIndex
-          organization={currentOrg}
-          visibleSpaces={regionVisibleSpaces}
-          isExternal={isExternal}
-          searchQuery={searchSpaceQuery}
-          onSearchChange={setSearchSpaceQuery}
-          onSelectSpace={handleSpaceChange}
-          onCreateProject={() => setIsNewSpaceModalOpen(true)}
-          getStudioCount={getStudioCount}
-          userDisplayName={currentUser.displayName}
-        />
+        <div className="flex-1 flex flex-col min-h-0">
+          <OrgProjectIndex
+            organization={currentOrg}
+            visibleSpaces={regionVisibleSpaces}
+            isExternal={isExternal}
+            searchQuery={searchSpaceQuery}
+            onSearchChange={setSearchSpaceQuery}
+            onSelectSpace={handleSpaceChange}
+            onCreateProject={openNewSpaceModal}
+            getStudioCount={getStudioCount}
+            userDisplayName={currentUser.displayName}
+          />
+        </div>
       ) : (
         
         /* ==================== 3. VIEW INSIDE THE ENTERED ACTIVE SPACE ==================== */
         <div className="flex-1 flex min-h-0 animate-in fade-in duration-200">
-          
-          {/* Left Sidebar navigation panel with Space Selector on Top */}
-          <aside className="w-[48px] bg-white border-r border-slate-100 flex flex-col items-center py-3 justify-between flex-shrink-0 z-30 select-none">
-            
-            <div className="flex flex-col items-center gap-2.5 w-full">
-              
-              {/* Space project switcher at the very top of Sidebar */}
-              <div className="relative mb-4 pb-3 border-b border-slate-100 flex flex-col items-center">
-                <button
-                  id="sidebar-space-switcher-btn"
-                  onClick={() => setIsSidebarSpaceDropdownOpen(!isSidebarSpaceDropdownOpen)}
-                  className="w-9 h-9 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm cursor-pointer transition-all shadow-xs hover:scale-105 active:scale-95"
-                  title={`Active Project: ${currentSpace?.name || 'Switch Project'}`}
-                >
-                  {currentSpace?.name ? currentSpace.name.charAt(0).toUpperCase() : 'S'}
-                </button>
-
-                {isSidebarSpaceDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsSidebarSpaceDropdownOpen(false)} />
-                    <div className="absolute left-12 top-0 mt-0 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-left-1 duration-150">
-                      <div className="px-3.5 py-1.5 border-b border-slate-100 mb-2 flex justify-between items-center">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                          Switch Project
-                        </span>
-                        {!isExternal && (
-                        <button
-                          onClick={() => {
-                            setIsNewSpaceModalOpen(true);
-                            setIsSidebarSpaceDropdownOpen(false);
-                          }}
-                          className="text-[#10b981] text-[9.5px] font-bold hover:underline"
-                        >
-                          + New Project
-                        </button>
-                        )}
-                      </div>
-
-                      <div className="max-h-60 overflow-y-auto px-1 space-y-0.5">
-                        {regionVisibleSpaces.map(item => (
-                          <button
-                            key={item.space.id}
-                            onClick={() => handleSpaceChange(item.space.id)}
-                            className={`w-full px-2.5 py-2 rounded-lg text-left text-xs font-bold flex flex-col gap-0.5 transition-colors cursor-pointer ${
-                              activeSpaceId === item.space.id
-                                ? 'bg-slate-50 text-slate-900 border border-slate-200/50'
-                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 border border-transparent'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="truncate">{item.space.name}</span>
-                              {activeSpaceId === item.space.id && <Check size={11} className="text-[#10b981]" />}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="h-[1px] bg-slate-100 my-2" />
-                      <div className="px-1.5">
-                        <button
-                          onClick={() => {
-                            setActiveSpaceId(null);
-                            setAppView('projects');
-                            setIsSidebarSpaceDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Home size={12} className="text-slate-400" />
-                          <span>返回项目大厅 (Back to Index)</span>
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Sites / Studios Hub tab */}
-              <button
-                id="tab-sites"
-                onClick={() => {
-                  setActiveTab('sites');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'sites' && !activeSiteId
-                    ? 'bg-slate-100 text-slate-950' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="站点总览"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  站点总览
-                </span>
-              </button>
-
-              {/* Project Resources */}
-              <button
-                id="tab-storage"
-                onClick={() => {
-                  setActiveTab('storage');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'storage'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Project Resources"
-              >
-                <Database size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  项目资源
-                </span>
-              </button>
-
-              {/* Topology / Builder Lab — temporarily hidden
-              {!isExternal && (
-              <button
-                id="tab-builder"
-                onClick={() => {
-                  setActiveTab('builder');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'builder'
-                    ? 'bg-slate-100 text-slate-950' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Topology design"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                </svg>
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  Topology Design
-                </span>
-              </button>
-              )}
-              */}
-
-              {/* Studio Cloud Logs (old analytics) — temporarily hidden
-              {!isExternal && (
-              <button
-                id="tab-analytics"
-                onClick={() => {
-                  setActiveTab('analytics');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'analytics'
-                    ? 'bg-slate-100 text-slate-950' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Cloud Console Monitoring"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  Studio Cloud Logs
-                </span>
-              </button>
-              )}
-              */}
-
-              {/* All Projects grid button — temporarily hidden
-              {!isExternal && (
-              <button
-                onClick={() => { setActiveSpaceId(null); setAppView('projects'); }}
-                className="p-2 rounded-lg text-slate-400 hover:text-[#10b981] hover:bg-emerald-50 transition-all flex items-center justify-center relative group cursor-pointer"
-                title="Back to All Projects"
-              >
-                <LayoutGrid size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  All Projects
-                </span>
-              </button>
-              )}
-              */}
-
-              {/* Analytics Dashboard */}
-              <button
-                id="tab-analytics-dashboard"
-                onClick={() => {
-                  setActiveTab('analytics-dashboard');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'analytics-dashboard'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Analytics"
-              >
-                <PieChart size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  数据分析
-                </span>
-              </button>
-
-              {/* Alerts */}
-              <button
-                id="tab-alerts"
-                onClick={() => {
-                  setActiveTab('alerts');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'alerts'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Alerts"
-              >
-                <Bell size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  告警规则
-                </span>
-              </button>
-
-              {/* Firmware Updates */}
-              <button
-                id="tab-updates"
-                onClick={() => {
-                  setActiveTab('updates');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'updates'
-                    ? 'bg-slate-100 text-slate-950'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Firmware Updates"
-              >
-                <RefreshCw size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  固件更新
-                </span>
-              </button>
-            </div>
-
-            <div className="flex flex-col items-center gap-2 w-full">
-              {!isExternal && (
-              <button
-                id="tab-space-settings"
-                onClick={() => {
-                  setActiveTab('space-settings');
-                  setActiveSiteId(null);
-                }}
-                className={`p-2 rounded-lg transition-all flex items-center justify-center relative group cursor-pointer ${
-                  activeTab === 'space-settings'
-                    ? 'bg-slate-100 text-slate-950' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                }`}
-                title="Project Admin Config"
-              >
-                <Settings size={20} />
-                <span className="absolute left-14 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                  Project Settings
-                </span>
-              </button>
-              )}
-            </div>
-          </aside>
+          {siteManagerSidebar}
 
           <div className="flex-1 flex flex-col min-w-0 bg-[#fbfbfb]">
             <main className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1304,12 +1148,12 @@ export default function App() {
 
       {isNewSpaceModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
-            <div className="bg-[#1e293b] p-5 text-white flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
+            <div className="bg-[#1e293b] p-5 text-white flex justify-between items-center rounded-t-2xl">
               <div>
                 <h3 className="font-extrabold text-sm">新建项目</h3>
                 <p className="text-[10px] text-slate-300 mt-0.5">
-                  {isPersonalOrg(activeOrgId) ? '创建在个人工作区' : `创建在 ${currentOrg?.name ?? '组织'}`}
+                  {isPersonalOrg(activeOrgId) ? '创建在个人工作区' : `创建在 ${currentOrg?.name ?? '工作区'}`}
                 </p>
               </div>
               <button onClick={() => setIsNewSpaceModalOpen(false)} className="text-slate-400 hover:text-white text-xs cursor-pointer">关闭</button>
@@ -1318,20 +1162,30 @@ export default function App() {
               <input required placeholder="项目名称" className="w-full px-3 py-2 border rounded-lg" value={newSpaceName} onChange={e => setNewSpaceName(e.target.value)} />
               <textarea rows={3} placeholder="项目描述" className="w-full px-3 py-2 border rounded-lg" value={newSpaceDesc} onChange={e => setNewSpaceDesc(e.target.value)} />
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">数据中心</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">国家/地区</label>
                 <select
-                  value={newSpaceRegionId}
-                  onChange={e => setNewSpaceRegionId(e.target.value)}
-                  disabled={eligibleDcRegions.length <= 1}
-                  className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-slate-50 disabled:text-slate-600"
+                  value={selectedProjectCountryId}
+                  onChange={e => setNewSpaceCountryId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white"
                 >
-                  {eligibleDcRegions.map(r => (
-                    <option key={r.id} value={r.id}>{r.flag} {r.name}</option>
-                  ))}
+                  {eligibleProjectCountries.map(c => {
+                    const dc = REGIONS.find(r => r.id === c.regionId);
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.flag} {c.name}{dc ? ` · ${dc.name}` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
-                  项目数据将存储于所选数据中心，创建后不可更改。
-                  {eligibleDcRegions.length <= 1 && ' 当前账号注册国家/地区仅可使用本区数据中心。'}
+                  项目将部署在所选国家/地区对应的数据中心
+                  {selectedProjectDc && (
+                    <span className="text-slate-500">
+                      {' '}（{selectedProjectDc.flag} {selectedProjectDc.name} · {selectedProjectDc.cloudEndpoint}）
+                    </span>
+                  )}
+                  ；创建后不可更改。
+                  {eligibleProjectCountries.length <= 1 && ' 当前账号注册国家/地区仅可使用本地区云节点。'}
                 </p>
               </div>
               <div className="flex justify-end gap-2">
@@ -1361,7 +1215,7 @@ export default function App() {
                   应用到 Site Manager
                 </div>
                 <h3 className="font-extrabold text-base mt-1">{applyPlan.title}</h3>
-                <p className="text-[11px] text-blue-100 mt-0.5">{applyPlan.devices} 设备 · 来自 Lab AI</p>
+                <p className="text-[11px] text-blue-100 mt-0.5">{applyPlan.devices} 设备 · 来自 Lab</p>
               </div>
               <div className="p-5 space-y-4 text-xs">
                 <div>
@@ -1421,7 +1275,7 @@ export default function App() {
                 </div>
                 <h3 className="font-extrabold text-base mt-1">{applyUi.title}</h3>
                 <p className="text-[11px] text-indigo-100 mt-0.5">
-                  {applyUi.kind === 'theme' ? '主题配置' : 'App 界面'} · 来自 Lab AI
+                  {applyUi.kind === 'theme' ? '主题配置' : 'App 界面'} · 来自 Lab
                 </p>
               </div>
               <div className="p-5 space-y-4 text-xs">
@@ -1462,12 +1316,26 @@ export default function App() {
         );
       })()}
 
+      {isWorkspacePickerModalOpen && (
+        <WorkspacePickerModal
+          workspaceOptions={workspaceOptions}
+          activeOrgId={activeOrgId}
+          userDisplayName={currentUser.displayName}
+          onSelect={handleSelectWorkspaceFromModal}
+          onCreateOrg={() => {
+            setIsWorkspacePickerModalOpen(false);
+            alert('创建工作区流程（演示）');
+          }}
+          onClose={() => setIsWorkspacePickerModalOpen(false)}
+        />
+      )}
+
       {/* ==================== 进入组织管理后台（云效式选择页） ==================== */}
       {isEnterOrgModalOpen && (
         <EnterOrgModal
           adminOrgs={adminOrgs}
           onSelect={handleEnterOrgAdmin}
-          onCreateOrg={() => alert('创建组织流程（演示）')}
+          onCreateOrg={() => alert('创建工作区流程（演示）')}
           onClose={() => setIsEnterOrgModalOpen(false)}
         />
       )}

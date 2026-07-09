@@ -73,7 +73,7 @@ export default function ProjectStoragePanel({
     frequency: 'daily' | 'weekly' | 'monthly';
     retention: number;
   }>({ autoEnabled: true, frequency: 'daily', retention: 3 });
-  // 立即备份：选择要备份的 Studio（'' = 全部 Studio 聚合备份）
+  // 立即备份：'' = 为项目下每台 Studio 各生成一份独立备份
   const [backupStudioId, setBackupStudioId] = useState('');
 
   const memberById = useMemo(() => {
@@ -147,7 +147,7 @@ export default function ProjectStoragePanel({
 
   const studioName = (id?: string) => sites.find(s => s.id === id)?.name;
   const backupScopeLabel = (asset: ProjectAsset) =>
-    asset.studioId ? (studioName(asset.studioId) ?? '未知 Studio') : `全部 Studio (${studioCount})`;
+    studioName(asset.studioId) ?? '未知 Studio';
 
   const openSchedule = () => {
     setScheduleDraft({ autoEnabled, frequency, retention });
@@ -161,13 +161,14 @@ export default function ProjectStoragePanel({
     setScheduleOpen(false);
   };
 
-  const handleCreateBackup = () => onCreateBackup(space.id, backupStudioId || undefined);
+  const handleCreateBackup = () => {
+    if (!backupStudioId && studioCount === 0) return;
+    onCreateBackup(space.id, backupStudioId || undefined);
+  };
 
   const handleRestoreBackup = (asset: ProjectAsset) => {
-    const scope = asset.studioId
-      ? `Studio「${studioName(asset.studioId) ?? asset.studioId}」`
-      : `项目下全部 ${studioCount} 台 Studio`;
-    if (confirm(`确认使用云端备份「${asset.name}」还原 ${scope} 的本地数据？\n还原过程中相关 Studio 将短暂离线。`)) {
+    const scope = `Studio「${studioName(asset.studioId) ?? asset.studioId ?? '未知'}」`;
+    if (confirm(`确认使用云端备份「${asset.name}」还原 ${scope} 的本地数据？\n还原过程中该 Studio 将短暂离线。`)) {
       alert(`已从 Studio Cloud 下发还原任务：${asset.name}\n（Demo 模拟，${scope} 将从云端备份恢复本地配置与运行数据）`);
     }
   };
@@ -186,8 +187,7 @@ export default function ProjectStoragePanel({
         createdAt: asset.createdAt,
         studioId: asset.studioId ?? null,
         studioName: asset.studioId ? (studioName(asset.studioId) ?? null) : null,
-        scope: asset.studioId ? 'single-studio' : 'all-studios',
-        studios: asset.studioId ? 1 : studioCount,
+        scope: 'single-studio',
         storage: 'studio-cloud',
         exportedAt: new Date().toISOString(),
       },
@@ -230,20 +230,16 @@ export default function ProjectStoragePanel({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-extrabold text-slate-900">项目资源</h2>
+        <p className="text-xs text-slate-400 mt-0.5">
+          项目级共享容量，存放方案设计、界面配置与数据备份
+        </p>
+      </div>
+
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-              <Database size={18} className="text-slate-600" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-slate-800 text-sm">项目资源</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                项目级共享容量，存放方案设计、界面配置与数据备份
-              </p>
-            </div>
-          </div>
+        <div className="flex items-start justify-end gap-4 mb-4">
           <div className="text-right shrink-0">
             <p className="text-lg font-black text-slate-800 tabular-nums">
               {usedGb < 0.1 ? '< 0.1' : usedGb.toFixed(1)}
@@ -314,7 +310,7 @@ export default function ProjectStoragePanel({
                     title="选择要备份的 Studio"
                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11px] font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 max-w-[160px]"
                   >
-                    <option value="">全部 Studio ({studioCount})</option>
+                    <option value="">全部 Studio ({studioCount} 个文件)</option>
                     {sites.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -345,8 +341,8 @@ export default function ProjectStoragePanel({
                 <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
                   <Clock size={10} className="text-slate-400" />
                   {autoEnabled
-                    ? `${FREQUENCY_LABELS[frequency]} · 覆盖 ${studioCount} 台 Studio · 保留最近 ${retention} 个 · 存储于项目云端 (Studio Cloud)`
-                    : `手动备份仍可随时创建 · 覆盖 ${studioCount} 台 Studio`}
+                    ? `${FREQUENCY_LABELS[frequency]} · 每台 Studio 独立备份 · 共 ${studioCount} 台 · 保留最近 ${retention} 份/台 · 存储于项目云端 (Studio Cloud)`
+                    : `手动备份仍可随时创建 · 选择「全部 Studio」将为每台 Studio 各生成一份备份`}
                 </p>
               </div>
               {canManage && (
@@ -398,17 +394,10 @@ export default function ProjectStoragePanel({
                               </div>
                             </td>
                             <td className="px-3 py-2.5">
-                              {asset.studioId ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                                  <Server size={9} className="text-slate-400" />
-                                  <span className="truncate max-w-[120px]">{backupScopeLabel(asset)}</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-600">
-                                  <Server size={9} className="text-violet-400" />
-                                  {backupScopeLabel(asset)}
-                                </span>
-                              )}
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                                <Server size={9} className="text-slate-400" />
+                                <span className="truncate max-w-[120px]">{backupScopeLabel(asset)}</span>
+                              </span>
                             </td>
                             <td className="px-3 py-2.5">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -463,7 +452,7 @@ export default function ProjectStoragePanel({
             <Database size={28} className="mx-auto text-slate-200 mb-3" />
             <p className="text-xs font-bold text-slate-500">暂无资源</p>
             <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
-              从 Lab AI 导入方案、插件或界面配置，或等待 Studio 自动上传数据备份
+              从 Lab 导入方案、插件或界面配置，或等待 Studio 自动上传数据备份
             </p>
           </div>
         ) : (
@@ -498,7 +487,7 @@ export default function ProjectStoragePanel({
                             {' · '}
                             {formatSize(asset.sizeMb)}
                             {' · '}
-                            {asset.source === 'builder' ? (plan?.fromMarketplace ? 'Lab AI · 市场购买' : 'Lab AI') : asset.source === 'studio-cloud' ? 'Studio Cloud' : '系统'}
+                            {asset.source === 'builder' ? (plan?.fromMarketplace ? 'Lab · 市场购买' : 'Lab') : asset.source === 'studio-cloud' ? 'Studio Cloud' : '系统'}
                             {' · '}
                             {asset.createdAt}
                           </p>

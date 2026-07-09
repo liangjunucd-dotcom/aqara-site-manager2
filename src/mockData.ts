@@ -362,6 +362,45 @@ export const REGIONS = [
   { id: 'kr', name: '韩国 (Seoul)', flag: '🇰🇷', cloudEndpoint: 'kr.studio.aqara.com', latency: '61ms', cloudGroup: 'global' as const },
 ];
 
+/** 新建项目时的国家选择 — UI 展示国家名，内部映射到 regionId / 数据中心 */
+export const PROJECT_COUNTRIES = [
+  { id: 'cn', name: 'China', flag: '🇨🇳', regionId: 'cn' },
+  { id: 'us', name: 'United States', flag: '🇺🇸', regionId: 'us' },
+  { id: 'de', name: 'Germany', flag: '🇩🇪', regionId: 'eu' },
+  { id: 'gb', name: 'United Kingdom', flag: '🇬🇧', regionId: 'eu' },
+  { id: 'fr', name: 'France', flag: '🇫🇷', regionId: 'eu' },
+  { id: 'ru', name: 'Russia', flag: '🇷🇺', regionId: 'ru' },
+  { id: 'sg', name: 'Singapore', flag: '🇸🇬', regionId: 'sg' },
+  { id: 'kr', name: 'South Korea', flag: '🇰🇷', regionId: 'kr' },
+  { id: 'jp', name: 'Japan', flag: '🇯🇵', regionId: 'sg' },
+  { id: 'au', name: 'Australia', flag: '🇦🇺', regionId: 'sg' },
+  { id: 'ca', name: 'Canada', flag: '🇨🇦', regionId: 'us' },
+  { id: 'mx', name: 'Mexico', flag: '🇲🇽', regionId: 'us' },
+] as const;
+
+export type ProjectCountry = (typeof PROJECT_COUNTRIES)[number];
+
+/** 按账号云组过滤可选国家（与 getEligibleDataCenterRegionIds 对齐） */
+export function getEligibleProjectCountries(
+  homeRegionId: string,
+  regions: typeof REGIONS,
+): ProjectCountry[] {
+  const home = regions.find(r => r.id === homeRegionId);
+  const group = home?.cloudGroup ?? 'global';
+  const eligibleRegionIds =
+    group === 'cn'
+      ? regions.filter(r => r.cloudGroup === 'cn').map(r => r.id)
+      : group === 'ru'
+        ? regions.filter(r => r.cloudGroup === 'ru').map(r => r.id)
+        : regions.filter(r => r.cloudGroup === 'global').map(r => r.id);
+  return PROJECT_COUNTRIES.filter(c => eligibleRegionIds.includes(c.regionId));
+}
+
+/** 国家 id → 数据中心 regionId */
+export function countryToRegionId(countryId: string): string {
+  return PROJECT_COUNTRIES.find(c => c.id === countryId)?.regionId ?? 'cn';
+}
+
 // 设计平台 (Aqara Builder) 中已完成的方案 / 已购买插件 — 可应用到 Site Manager Space
 export const DESIGN_PLATFORM_PLANS = [
   { id: 'dp-1', title: '现代两居别墅方案', updatedAt: '2026-06-30 11:03:58', status: 'In Design', devices: 18, area: '145 m²', kind: 'plan' as const },
@@ -388,7 +427,7 @@ export const INITIAL_ORG_DEPARTMENTS = [
 ];
 
 export const DEMO_USERS = [
-  { id: 'user-jun', email: 'liangjunucd@gmail.com', displayName: 'Jun (userA)', homeRegionId: 'cn' },
+  { id: 'user-jun', email: 'liangjunucd@gmail.com', displayName: 'Jun (userA)', homeRegionId: 'us' },
   { id: 'user-sysadmin', email: 'system-admin@aqara.com', displayName: 'System Admin (userB)', homeRegionId: 'us' },
   { id: 'user-installer', email: 'remote.eng@aqara.com', displayName: 'Installer (userC)', homeRegionId: 'sg' },
   { id: 'user-yanbin', email: 'yanbin@example.com', displayName: '焱彬', homeRegionId: 'cn' },
@@ -416,8 +455,8 @@ export const INITIAL_ORG_MEMBERS = [
 
 // Initial space seed — PRD V1.3 personal_space / org_space
 export const INITIAL_SPACES = [
-  { id: 'my-home', name: 'Jun的家 (My Home)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '个人私有空间，智能家居主控制区', createdAt: '2026-01-10', storageQuotaGb: 5 },
-  { id: 'bachelor-pad', name: '单身公寓 (Bachelor Pad)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '高品质独立套房全屋智控', createdAt: '2026-03-15', storageQuotaGb: 5 },
+  { id: 'my-home', name: 'Jun的家 (My Home)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '个人私有空间，智能家居主控制区', createdAt: '2026-01-10', storageQuotaGb: 5, regionId: 'cn' },
+  { id: 'bachelor-pad', name: '单身公寓 (Bachelor Pad)', ownerAccountId: personalAccountId('user-jun'), storageOrgId: null, spaceType: 'personal_space' as const, description: '高品质独立套房全屋智控', createdAt: '2026-03-15', storageQuotaGb: 5, regionId: 'cn' },
   { id: 'yanbin-home', name: '焱彬的家', ownerAccountId: personalAccountId('user-yanbin'), storageOrgId: null, spaceType: 'personal_space' as const, description: '焱彬的个人私有空间', createdAt: '2026-02-20', storageQuotaGb: 5 },
   { id: 'installer-home', name: 'Installer 的家', ownerAccountId: personalAccountId('user-installer'), storageOrgId: null, spaceType: 'personal_space' as const, description: 'Installer 个人私有空间', createdAt: '2026-01-05', storageQuotaGb: 5 },
 
@@ -482,13 +521,18 @@ export const INITIAL_PROJECT_PLANS: ProjectPlan[] = [
 export const INITIAL_PROJECT_ASSETS: ProjectAsset[] = [
   { id: 'asset-hotel-std', spaceId: 'xingyue-hotel', name: '星悦酒店标准客房模板', kind: 'design', sizeMb: estimateDesignSizeMb(12), source: 'builder', projectPlanId: 'pp-hotel-std', createdAt: '2026-03-10' },
   { id: 'asset-hotel-suite', spaceId: 'xingyue-hotel', name: '行政套房全屋智控', kind: 'design', sizeMb: estimateDesignSizeMb(32), source: 'builder', projectPlanId: 'pp-hotel-suite', createdAt: '2026-03-18' },
-  // 数据备份：Site Manager 在 Studio Cloud 侧对项目下多台 Studio(本地主机) 的数据进行云端备份
-  { id: 'asset-hotel-data-1', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2c.zip', kind: 'data-backup', sizeMb: 128, source: 'studio-cloud', backupType: 'auto', createdAt: '2026-07-01 00:00' },
+  // 数据备份：Site Manager 在 Studio Cloud 侧对项目下各 Studio(本地主机) 的数据进行云端备份（每台 Studio 一份独立 .zip）
+  { id: 'asset-hotel-data-1a', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2c.zip', kind: 'data-backup', sizeMb: 34, source: 'studio-cloud', backupType: 'auto', studioId: 'strategic-hq', createdAt: '2026-07-01 00:00' },
+  { id: 'asset-hotel-data-1b', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2d.zip', kind: 'data-backup', sizeMb: 32, source: 'studio-cloud', backupType: 'auto', studioId: 'warehouse', createdAt: '2026-07-01 00:00' },
+  { id: 'asset-hotel-data-1c', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2e.zip', kind: 'data-backup', sizeMb: 31, source: 'studio-cloud', backupType: 'auto', studioId: 'global-hq', createdAt: '2026-07-01 00:00' },
+  { id: 'asset-hotel-data-1d', spaceId: 'xingyue-hotel', name: 'Backup-8f3a2f.zip', kind: 'data-backup', sizeMb: 31, source: 'studio-cloud', backupType: 'auto', studioId: 'main-office', createdAt: '2026-07-01 00:00' },
   { id: 'asset-hotel-data-2', spaceId: 'xingyue-hotel', name: 'Backup-2b91e7.zip', kind: 'data-backup', sizeMb: 42, source: 'studio-cloud', backupType: 'manual', studioId: 'warehouse', createdAt: '2026-06-28 14:32' },
   { id: 'asset-hotel-data-3', spaceId: 'xingyue-hotel', name: 'Backup-5d0c14.zip', kind: 'data-backup', sizeMb: 38, source: 'studio-cloud', backupType: 'manual', studioId: 'global-hq', createdAt: '2026-06-27 09:20' },
   { id: 'asset-hotel-ui', spaceId: 'xingyue-hotel', name: '客房控制面板 · 深色主题', kind: 'ui-config', sizeMb: 8.5, source: 'builder', assignedMemberAccountIds: [orgAccountId('user-sysadmin', 'enterprise-a'), orgAccountId('user-staff', 'enterprise-a')], createdAt: '2026-05-20' },
   { id: 'asset-tech-design', spaceId: 'tech-park', name: '智慧办公会议室方案', kind: 'design', sizeMb: estimateDesignSizeMb(21), source: 'builder', projectPlanId: 'pp-tech-office', createdAt: '2026-04-02' },
-  { id: 'asset-tech-data', spaceId: 'tech-park', name: 'Backup-a17f9b.zip', kind: 'data-backup', sizeMb: 96, source: 'studio-cloud', backupType: 'auto', createdAt: '2026-06-30 00:00' },
+  { id: 'asset-tech-data-1a', spaceId: 'tech-park', name: 'Backup-a17f9b.zip', kind: 'data-backup', sizeMb: 34, source: 'studio-cloud', backupType: 'auto', studioId: 'operations-hub', createdAt: '2026-06-30 00:00' },
+  { id: 'asset-tech-data-1b', spaceId: 'tech-park', name: 'Backup-a17f9c.zip', kind: 'data-backup', sizeMb: 31, source: 'studio-cloud', backupType: 'auto', studioId: 'administrative-center', createdAt: '2026-06-30 00:00' },
+  { id: 'asset-tech-data-1c', spaceId: 'tech-park', name: 'Backup-a17f9d.zip', kind: 'data-backup', sizeMb: 31, source: 'studio-cloud', backupType: 'auto', studioId: 'business-center', createdAt: '2026-06-30 00:00' },
   { id: 'asset-tech-data-2', spaceId: 'tech-park', name: 'Backup-c3e820.zip', kind: 'data-backup', sizeMb: 34, source: 'studio-cloud', backupType: 'manual', studioId: 'operations-hub', createdAt: '2026-06-21 09:15' },
   { id: 'asset-tech-ui', spaceId: 'tech-park', name: '会议室场景 App 界面包', kind: 'ui-config', sizeMb: 12, source: 'builder', assignedMemberAccountIds: [], createdAt: '2026-06-10' },
   { id: 'asset-retail-plugin', spaceId: 'retail-stores', name: '多店客流热力图', kind: 'design', sizeMb: estimateDesignSizeMb(5), source: 'builder', projectPlanId: 'pp-retail-traffic', createdAt: '2026-06-11' },

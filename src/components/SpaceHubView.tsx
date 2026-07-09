@@ -881,7 +881,8 @@ export default function SpaceHubView({
 
   return (
     <div className="space-y-4">
-      
+      <h2 className="text-xl font-extrabold text-slate-900">站点总览</h2>
+
       {/* ==================== 1. COMPACT SPACE HEADER ==================== */}
       <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs select-none">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -898,9 +899,9 @@ export default function SpaceHubView({
                   <FolderTree size={16} />
                 </button>
               )}
-              <h2 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
+              <h3 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
                 {currentSpace?.name ? currentSpace.name.replace(/\s*\(.*?\)\s*/g, '') : 'Miniserver Hub'}
-              </h2>
+              </h3>
               <button 
                 onClick={() => setIsFavorite(!isFavorite)}
                 className="p-1 hover:bg-slate-50 rounded text-slate-400 hover:text-amber-400 transition-colors cursor-pointer shrink-0"

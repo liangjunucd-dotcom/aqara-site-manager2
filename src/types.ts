@@ -116,7 +116,7 @@ export interface ProjectAsset {
   assignedMemberAccountIds?: string[];
   /** 若为数据备份(data-backup)，标记为自动计划备份或手动触发备份 */
   backupType?: 'auto' | 'manual';
-  /** 若为数据备份(data-backup)，来源 Studio(站点) id；留空表示覆盖项目下全部 Studio 的聚合备份 */
+  /** 若为数据备份(data-backup)，来源 Studio(站点) id；每台 Studio 对应一份独立备份文件 */
   studioId?: string;
   createdAt: string;
 }

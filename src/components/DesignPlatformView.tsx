@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Search, LayoutGrid, Library, Compass, Filter, Plus, MoreVertical, Puzzle, Send, Smartphone, Palette, Store, Code2, Sparkles, Eye } from 'lucide-react';
+import { Organization } from '../types';
+import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 export interface DesignPlan {
   id: string;
@@ -22,14 +24,26 @@ export interface UiThemeAsset {
   kind: 'app-ui' | 'theme';
 }
 
+export interface LabWorkspaceProps {
+  activeOrgId: string;
+  workspaceOptions: Organization[];
+  currentWorkspaceName: string;
+  userDisplayName: string;
+  adminOrgs: Organization[];
+  onOrgChange: (orgId: string) => void;
+  onEnterOrgModal: () => void;
+  onCreateOrg?: () => void;
+}
+
 interface DesignPlatformViewProps {
   plans: DesignPlan[];
   uiThemes?: UiThemeAsset[];
   onApply: (plan: DesignPlan) => void;
   onApplyUi?: (item: UiThemeAsset) => void;
+  workspace: LabWorkspaceProps;
 }
 
-type LabSection = 'space-plan' | 'app-ui' | 'marketplace' | 'developer-hub';
+type LabSection = 'overview' | 'space-plan' | 'app-ui' | 'marketplace' | 'developer-hub';
 
 const DEFAULT_UI_THEMES: UiThemeAsset[] = [
   { id: 'ui-1', title: '客房控制面板 · 深色主题', updatedAt: '2026-06-28 14:22', status: 'Published', kind: 'theme' },
@@ -109,7 +123,7 @@ function FuturePlaceholderPanel({
   );
 }
 
-export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES, onApply, onApplyUi }: DesignPlatformViewProps) {
+export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES, onApply, onApplyUi, workspace }: DesignPlatformViewProps) {
   const [section, setSection] = useState<LabSection>('space-plan');
   const [query, setQuery] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -121,9 +135,16 @@ export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES
 
   return (
     <div className="flex-1 flex min-h-0 animate-in fade-in duration-200">
-      <aside className="w-[210px] bg-white border-r border-slate-100 flex flex-col py-4 px-3 flex-shrink-0 select-none">
+      <aside className="w-[210px] bg-white border-r border-slate-100 flex flex-col py-3 px-3 flex-shrink-0 select-none">
+        <WorkspaceSwitcher variant="lab-ai-sidebar" {...workspace} />
+
         <p className="px-2 text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Home</p>
-        <button className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
+        <button
+          onClick={() => setSection('overview')}
+          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-bold cursor-pointer ${
+            section === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
           <Compass size={14} /> Overview
         </button>
 
@@ -172,6 +193,35 @@ export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-[#fafafa] p-6">
+        {section === 'overview' && (
+          <div className="max-w-2xl space-y-4">
+            <div>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight">Lab Overview</h1>
+              <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                在此创作空间方案、App 界面与主题，完成后可应用到 Site Manager 项目资源库。
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setSection('space-plan')}
+                className="text-left p-4 rounded-xl border border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40 transition-colors cursor-pointer"
+              >
+                <LayoutGrid size={18} className="text-blue-600 mb-2" />
+                <p className="text-sm font-bold text-slate-800">Space Plan</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">空间方案与设备拓扑</p>
+              </button>
+              <button
+                onClick={() => setSection('app-ui')}
+                className="text-left p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/40 transition-colors cursor-pointer"
+              >
+                <Smartphone size={18} className="text-indigo-600 mb-2" />
+                <p className="text-sm font-bold text-slate-800">App UI & Theme</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">界面配置与主题</p>
+              </button>
+            </div>
+          </div>
+        )}
+
         {isCreateSection && (
           <div className="flex items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-2xl">
@@ -196,7 +246,7 @@ export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES
           <div className="mb-4 flex items-center gap-2 text-[11px] text-slate-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 max-w-2xl">
             <Send size={13} className="text-blue-500" />
             {section === 'space-plan'
-              ? '在 Lab AI 完成空间方案或购买插件后，点击「···」→「应用到 Site Manager」，导入到项目资源库。'
+              ? '在 Lab 完成空间方案或购买插件后，点击「···」→「应用到 Site Manager」，导入到项目资源库。'
               : 'App 界面与主题创作完成后，同样可分配到 Site Manager 项目下的界面配置资源。'}
           </div>
         )}
@@ -321,8 +371,8 @@ export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES
           <FuturePlaceholderPanel
             icon={Store}
             title="插件市场"
-            description="第三方开发者可发布 Studio 插件；您可浏览、购买并安装到 Lab AI 资产库。安装后的插件与自研 Space Plan 一样，通过「应用到 Site Manager」进入项目资源，再分发到各 Studio 运行。"
-            pipelineNote="购买/安装 → Lab AI 插件库 → 应用到 Site Manager（方案设计 · kind=plugin）→ 分发到 Studio → 运行时加载"
+            description="第三方开发者可发布 Studio 插件；您可浏览、购买并安装到 Lab 资产库。安装后的插件与自研 Space Plan 一样，通过「应用到 Site Manager」进入项目资源，再分发到各 Studio 运行。"
+            pipelineNote="购买/安装 → Lab 插件库 → 应用到 Site Manager（方案设计 · kind=plugin）→ 分发到 Studio → 运行时加载"
           >
             <div className="mt-6">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">市场预览（只读）</p>
@@ -358,7 +408,7 @@ export default function DesignPlatformView({ plans, uiThemes = DEFAULT_UI_THEMES
             icon={Code2}
             title="开发者中心"
             description="面向 ISV 与集成商的插件开发与 App 页面开发工具。完成开发后可发布至插件市场，或直接将产物「应用到 Site Manager」指定项目的资源库。"
-            pipelineNote="开发 / 打包 / 发布 → Lab AI 资产 → 应用到 Site Manager（design 或 ui-config）→ Studio 或 App 端生效"
+            pipelineNote="开发 / 打包 / 发布 → Lab 资产 → 应用到 Site Manager（design 或 ui-config）→ Studio 或 App 端生效"
           >
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4">

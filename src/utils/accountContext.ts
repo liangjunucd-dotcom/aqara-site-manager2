@@ -134,6 +134,21 @@ export function getAccessibleOpsRegionIds(
   return seen;
 }
 
+/** 顶栏可切换的运维区域 = 账号云组允许的数据中心 ∪ 已有项目所在区域（按 REGIONS 顺序） */
+export function getSwitchableOpsRegionIds(
+  homeRegionId: string,
+  regions: Region[],
+  items: VisibleSpaceItem[],
+  accounts: Account[],
+  users: User[],
+): string[] {
+  const eligible = new Set(getEligibleDataCenterRegionIds(homeRegionId, regions));
+  for (const id of getAccessibleOpsRegionIds(items, accounts, users)) {
+    eligible.add(id);
+  }
+  return regions.map(r => r.id).filter(id => eligible.has(id));
+}
+
 export function splitPersonalSpaces(items: VisibleSpaceItem[]) {
   return {
     owned: items.filter(i => i.isOwner),
@@ -215,16 +230,25 @@ export function getSpaceCollaborators(
     .filter(sh => sh.spaceId === spaceId && sh.status === 'Active')
     .forEach(sh => {
       const account = accounts.find(a => a.accountId === sh.targetAccountId);
-      const user = account ? users.find(u => u.id === account.userId) : undefined;
-      if (!account || !user) return;
+      const user = account
+        ? users.find(u => u.id === account.userId)
+        : users.find(u => u.id === sh.targetAccountId);
+      if (!user) return;
+      const resolvedAccount = account ?? {
+        accountId: sh.targetAccountId,
+        userId: user.id,
+        orgId: null,
+        accountType: 'personal' as const,
+        memberTag: null,
+      };
       const orgMember =
         space.spaceType === 'org_space' && space.storageOrgId
-          ? orgMembers.find(om => om.accountId === account.accountId)
+          ? orgMembers.find(om => om.accountId === resolvedAccount.accountId)
           : undefined;
       result.push({
         share: sh,
         user,
-        account,
+        account: resolvedAccount,
         memberTag: orgMember?.memberTag ?? (space.spaceType === 'personal_space' ? 'internal' : 'external'),
         role: sh.role,
       });

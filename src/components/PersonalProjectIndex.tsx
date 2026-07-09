@@ -28,7 +28,7 @@ export default function PersonalProjectIndex({
   const { owned, shared } = splitPersonalSpaces(filtered);
 
   return (
-    <div className="flex-1 max-w-6xl w-full mx-auto p-6 md:p-10 space-y-6 animate-in fade-in duration-200 select-none">
+    <div className="flex-1 overflow-y-auto max-w-6xl w-full mx-auto p-6 md:p-10 space-y-6 animate-in fade-in duration-200 select-none">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-black tracking-tight text-slate-900">个人工作区</h1>
         <div className="flex items-center gap-3">
